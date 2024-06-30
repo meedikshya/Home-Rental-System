@@ -1,35 +1,22 @@
 import express from "express";
 import dotenv from "dotenv";
+import db from "./db/connection.js";
+import routes from "./routes/index.js";
 
 dotenv.config();
 
 const app = express();
-
 const port = process.env.PORT || 5001;
 
-app.get("/", (req, res) => {
-  res.send("Hello World!");
+db.connect((err) => {
+  if (err) {
+    console.error("Error connecting to the database:", err);
+    return;
+  }
+  console.log("Connected to the MySQL database");
 });
 
-app.get("/api/random", (req, res) => {
-  const random = [
-    {
-      id: 1,
-      title: "Random",
-      content: "bjskskdhwdio",
-    },
-    {
-      id: 2,
-      title: "Random",
-      content: "bjskskdhwdio",
-    },
-  ];
-  res.json(random);
-});
-
-app.get("/login", (req, res) => {
-  res.send("<h2> Login </h2>");
-});
+app.use("/", routes);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

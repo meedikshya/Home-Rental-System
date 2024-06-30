@@ -18,7 +18,7 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Jokes</h1>
+      <h1 className="text-7xl font-bold underline">Jokes</h1>
       <p>JOKES: {jokes.length} </p>
       {jokes.map((joke) => (
         <div key={joke.id}>
