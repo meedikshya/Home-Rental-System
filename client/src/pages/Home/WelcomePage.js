@@ -1,16 +1,59 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../../services/Firebase-config.js";
-import { signOut } from "firebase/auth";
+import { toast } from "react-toastify";
 import { FaUserCircle } from "react-icons/fa";
 
-export const WelcomePage = ({ user }) => {
+const WelcomePage = () => {
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch user information from session storage
+    const storedUserEmail = sessionStorage.getItem("userEmail");
+    if (storedUserEmail) {
+      setUser({ email: storedUserEmail });
+    } else {
+      navigate("/login");
+    }
+    setLoading(false);
+  }, [navigate]);
 
   const handleLogout = async () => {
-    await signOut(auth);
-    navigate("/");
+    try {
+      // Make request to logout endpoint
+      const response = await fetch("http://localhost:3000/api/logout", {
+        method: "POST",
+        credentials: "include", // Include cookies in the request
+      });
+
+      if (response.ok) {
+        // Clear session storage
+        sessionStorage.removeItem("userEmail");
+
+        // Show success message
+        toast.success("Logout successful!");
+
+        // Navigate to login page
+        navigate("/");
+      } else {
+        throw new Error("Logout failed");
+      }
+    } catch (error) {
+      console.error("Logout Error:", error.message);
+      toast.error(`Logout error: ${error.message}`);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-screen bg-gray-100 flex items-center justify-center">
+        <div className="w-full max-w-4xl bg-white shadow-lg rounded-lg p-8 text-center">
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen bg-gray-100 flex flex-col items-center justify-center">
@@ -39,3 +82,5 @@ export const WelcomePage = ({ user }) => {
     </div>
   );
 };
+
+export default WelcomePage;
