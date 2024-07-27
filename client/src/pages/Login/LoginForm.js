@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAuth } from "firebase/auth";
+import { toast } from "react-toastify";
 
 export const LoginForm = ({
   loginEmail,
   loginPassword,
   setLoginEmail,
   setLoginPassword,
-  login,
 }) => {
   const navigate = useNavigate();
   const [error, setError] = useState("");
@@ -20,41 +19,51 @@ export const LoginForm = ({
 
   const handleSignin = async () => {
     try {
-      // Reset previous errors
       setError("");
       setEmailError("");
       setPasswordError("");
 
-      // Basic validation
       if (!loginEmail || !loginPassword) {
         if (!loginEmail) setEmailError("Email is required.");
         if (!loginPassword) setPasswordError("Password is required.");
         return;
       }
 
-      const success = await login(loginEmail, loginPassword); // Call login function passed as prop
+      const response = await fetch("http://localhost:3000/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
 
-      if (success) {
+      if (response.ok) {
+        // Handle successful login
+        const data = await response.json();
+
+        // Store user credentials in sessionStorage
+        sessionStorage.setItem("userEmail", loginEmail);
+
+        // Show success message
+        toast.success("Login successful!");
+
         // Clear inputs after successful login
         setLoginEmail("");
         setLoginPassword("");
 
-        // Store Firebase token in localStorage if using Firebase Authentication
-        const auth = getAuth();
-        const user = auth.currentUser;
-        if (user) {
-          const token = await user.getIdToken();
-          localStorage.setItem("firebaseToken", token);
-        }
-
         // Navigate to home page or another secure route
         navigate("/home");
       } else {
-        setError("Login failed. Please check your credentials.");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Login failed");
       }
     } catch (error) {
       setError("Login failed. Please try again later.");
       console.error("Login Error:", error.message);
+      toast.error(`Login error: ${error.message}`);
     }
   };
 

@@ -1,16 +1,17 @@
-// authController.js
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase-config.js";
-import db from "../db/connection.js";
+import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import db from "../db/connection.js";
+import { generateToken } from "../utils/authUtils.js"; // Function to generate JWT token
+import admin from "../firebase-config.js"; // Import Firebase Admin SDK
 
 const saltRounds = 10;
+const JWT_SECRET = process.env.JWT_SECRET || "fjhfkhdk";
 
+// Function to handle user login
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Fetch user from the database
     db.query(
       "SELECT * FROM users WHERE email = ?",
       [email],
@@ -25,23 +26,23 @@ export const loginUser = async (req, res) => {
         }
 
         const user = results[0];
-
-        // Compare password with hashed password stored in the database
         const passwordMatch = await bcrypt.compare(password, user.password);
 
         if (!passwordMatch) {
           return res.status(401).json({ error: "Invalid email or password" });
         }
 
-        // Generate Firebase token for the user
-        const userCredential = await signInWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-        const token = await userCredential.user.getIdToken();
+        // Generate custom JWT token
+        const token = generateToken(user.id);
 
-        res.status(200).json({ token });
+        // Set JWT token in HttpOnly cookie
+        res.cookie("JWTToken", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production", // Secure cookies in production
+          sameSite: "Strict", // Cookie only sent to same site
+        });
+
+        res.status(200).json({ message: "Login successful" });
       }
     );
   } catch (error) {
@@ -50,27 +51,46 @@ export const loginUser = async (req, res) => {
   }
 };
 
+// Function to handle user registration
 export const registerUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const newUser = { email: email, password: hashedPassword };
 
-    const newUser = {
-      email: email,
-      password: hashedPassword,
-    };
-
+    // Insert user into your database
     db.query(
       "INSERT INTO users (email, password) VALUES (?, ?)",
       [newUser.email, newUser.password],
-      (error, results) => {
+      async (error) => {
         if (error) {
           console.error("Error inserting user into database:", error);
           return res.status(500).json({ error: "Registration failed" });
         }
-        console.log("User inserted into database:", results);
-        res.status(201).json({ user: newUser });
+
+        try {
+          // Create user in Firebase
+          await admin.auth().createUser({
+            email: newUser.email,
+            password: password,
+          });
+
+          // Generate custom JWT token
+          const token = generateToken(newUser.email);
+
+          // Set JWT token in HttpOnly cookie
+          res.cookie("JWTToken", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production", // Secure cookies in production
+            sameSite: "Strict", // Cookie only sent to same site
+          });
+
+          res.status(201).json({ message: "Registration successful" });
+        } catch (firebaseError) {
+          console.error("Error creating user in Firebase:", firebaseError);
+          res.status(500).json({ error: "Registration failed in Firebase" });
+        }
       }
     );
   } catch (error) {

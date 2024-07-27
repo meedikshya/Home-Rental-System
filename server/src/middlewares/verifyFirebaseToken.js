@@ -1,25 +1,26 @@
-import { auth } from "../firebase-config.js";
+import jwt from "jsonwebtoken";
 
-const verifyToken = async (req, res, next) => {
-  const authorizationHeader = req.headers.authorization;
-  let token;
+const JWT_SECRET = process.env.JWT_SECRET || "gjhhchc";
 
-  if (authorizationHeader && authorizationHeader.startsWith("Bearer ")) {
-    token = authorizationHeader.split(" ")[1];
-  } else {
-    return res.status(403).json({ error: "No token provided" });
+const verifyJwtToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "Token not provided" });
   }
 
-  console.log("Received Token:", token); // Log the received token for debugging
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({ error: "Token expired" });
+      }
+      return res.status(403).json({ error: "Invalid token" });
+    }
 
-  try {
-    const decodedToken = await auth.verifyIdToken(token);
-    req.user = decodedToken;
+    req.user = user;
     next();
-  } catch (error) {
-    console.error("Token verification failed:", error);
-    return res.status(403).json({ error: "Unauthorized" });
-  }
+  });
 };
 
-export default verifyToken;
+export default verifyJwtToken;
