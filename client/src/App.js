@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { LoginForm } from "./pages/Login/LoginForm.js";
 import { RegisterForm } from "./pages/Signup/RegisterForm.js";
+import AdminPanel from "./pages/Admin/AdminPanel.js";
 import WelcomePage from "./pages/Home/WelcomePage.js";
 import { auth } from "./services/Firebase-config.js";
 import { ToastContainer, toast } from "react-toastify";
@@ -117,6 +118,7 @@ function App() {
               path="/home"
               element={<WelcomePage user={user} logout={logout} />}
             />
+            <Route path="/adminpanel" element={<AdminPanel />} />
           </Routes>
           <ToastContainer />
         </div>

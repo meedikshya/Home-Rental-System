@@ -50,7 +50,7 @@ export const RegisterForm = ({
 
   const registerUserToBackend = async (userData) => {
     try {
-      const response = await fetch("http://localhost:3000/api/register", {
+      const response = await fetch("http://localhost:3000/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -59,11 +59,16 @@ export const RegisterForm = ({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Registration failed");
+        const responseText = await response.text(); // Read response as text
+        try {
+          const errorData = JSON.parse(responseText);
+          throw new Error(errorData.error || "Registration failed");
+        } catch (error) {
+          throw new Error("Registration failed: " + responseText);
+        }
       }
 
-      return await response.json();
+      return JSON.parse(await response.text()); // Parse response text as JSON
     } catch (error) {
       throw new Error(`Network or server error: ${error.message}`);
     }

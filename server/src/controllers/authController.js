@@ -32,8 +32,8 @@ export const loginUser = async (req, res) => {
           return res.status(401).json({ error: "Invalid email or password" });
         }
 
-        // Generate custom JWT token
-        const token = generateToken(user.id);
+        // Include the role in the token payload
+        const token = generateToken({ id: user.id, role: user.role });
 
         // Set JWT token in HttpOnly cookie
         res.cookie("JWTToken", token, {
@@ -42,7 +42,8 @@ export const loginUser = async (req, res) => {
           sameSite: "Strict", // Cookie only sent to same site
         });
 
-        res.status(200).json({ message: "Login successful" });
+        // Return a success message
+        res.status(200).json({ message: "Login successful", role: user.role });
       }
     );
   } catch (error) {
@@ -53,16 +54,16 @@ export const loginUser = async (req, res) => {
 
 // Function to handle user registration
 export const registerUser = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, role = "user" } = req.body; // Default role is 'user'
 
   try {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    const newUser = { email: email, password: hashedPassword };
+    const newUser = { email: email, password: hashedPassword, role };
 
-    // Insert user into your database
+    // Insert user into your database with a role
     db.query(
-      "INSERT INTO users (email, password) VALUES (?, ?)",
-      [newUser.email, newUser.password],
+      "INSERT INTO users (email, password, role) VALUES (?, ?, ?)",
+      [newUser.email, newUser.password, newUser.role],
       async (error) => {
         if (error) {
           console.error("Error inserting user into database:", error);
@@ -71,19 +72,28 @@ export const registerUser = async (req, res) => {
 
         try {
           // Create user in Firebase
-          await admin.auth().createUser({
+          const userRecord = await admin.auth().createUser({
             email: newUser.email,
             password: password,
           });
 
-          // Generate custom JWT token
-          const token = generateToken(newUser.email);
+          // Set custom claims (e.g., role) for the user in Firebase
+          await admin
+            .auth()
+            .setCustomUserClaims(userRecord.uid, { role: role });
+
+          // Generate custom JWT token using newUser object
+          const token = generateToken({
+            id: userRecord.uid, // Use Firebase UID for the token
+            email: newUser.email,
+            role: newUser.role,
+          });
 
           // Set JWT token in HttpOnly cookie
           res.cookie("JWTToken", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production", // Secure cookies in production
-            sameSite: "Strict", // Cookie only sent to same site
+            sameSite: "Strict", // Cookie only sent to the same site
           });
 
           res.status(201).json({ message: "Registration successful" });

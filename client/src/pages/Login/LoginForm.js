@@ -1,17 +1,18 @@
+// src/pages/Login/LoginForm.js
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import useUser from "../../hooks/useUser.js";
 
-export const LoginForm = ({
-  loginEmail,
-  loginPassword,
-  setLoginEmail,
-  setLoginPassword,
-}) => {
+export const LoginForm = () => {
   const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+
+  const { login } = useUser();
 
   const handleRegister = () => {
     navigate("/register");
@@ -23,46 +24,36 @@ export const LoginForm = ({
       setEmailError("");
       setPasswordError("");
 
-      if (!loginEmail || !loginPassword) {
-        if (!loginEmail) setEmailError("Email is required.");
-        if (!loginPassword) setPasswordError("Password is required.");
+      if (!email || !password) {
+        if (!email) setEmailError("Email is required.");
+        if (!password) setPasswordError("Password is required.");
         return;
       }
 
-      const response = await fetch("http://localhost:3000/api/login", {
+      const response = await fetch("http://localhost:3000/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email: loginEmail,
-          password: loginPassword,
-        }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (response.ok) {
-        // Handle successful login
         const data = await response.json();
+        login({ email, role: data.role }); // Use login from useUser
 
-        // Store user credentials in sessionStorage
-        sessionStorage.setItem("userEmail", loginEmail);
-
-        // Show success message
         toast.success("Login successful!");
 
-        // Clear inputs after successful login
-        setLoginEmail("");
-        setLoginPassword("");
+        setEmail("");
+        setPassword("");
 
-        // Navigate to home page or another secure route
-        navigate("/home");
+        navigate(data.role === "admin" ? "/adminpanel" : "/home");
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || "Login failed");
       }
     } catch (error) {
       setError("Login failed. Please try again later.");
-      console.error("Login Error:", error.message);
       toast.error(`Login error: ${error.message}`);
     }
   };
@@ -81,10 +72,10 @@ export const LoginForm = ({
             }`}
             placeholder="abc@gmail.com"
             onChange={(event) => {
-              setLoginEmail(event.target.value);
+              setEmail(event.target.value);
               setEmailError("");
             }}
-            value={loginEmail}
+            value={email}
           />
           {emailError && <div className="text-red-500 mt-1">{emailError}</div>}
         </div>
@@ -97,10 +88,10 @@ export const LoginForm = ({
             placeholder="password"
             type="password"
             onChange={(event) => {
-              setLoginPassword(event.target.value);
+              setPassword(event.target.value);
               setPasswordError("");
             }}
-            value={loginPassword}
+            value={password}
           />
           {passwordError && (
             <div className="text-red-500 mt-1">{passwordError}</div>

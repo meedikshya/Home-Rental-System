@@ -1,27 +1,19 @@
-// authRoutes.js
 import express from "express";
-import { loginUser, registerUser } from "../controllers/authController.js"; // Import functions
-import verifyJwtToken from "../middlewares/verifyFirebaseToken.js"; // Import middleware
+import { loginUser, registerUser } from "../controllers/authController.js";
 
 const router = express.Router();
 
-// Registration endpoint
+// Ensure these paths are correct
 router.post("/register", registerUser);
-
-// Login endpoint
 router.post("/login", loginUser);
-
-// Logout endpoint
 router.post("/logout", (req, res) => {
-  // Clear the JWTToken cookie with matching attributes
   res.clearCookie("JWTToken", {
-    path: "/", // Ensure this matches the path used when setting the cookie
-    httpOnly: true, // Match attributes used when setting the cookie
-    secure: process.env.NODE_ENV === "production", // Match secure attribute
-    sameSite: "Strict", // Match sameSite attribute
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "Strict",
   });
 
-  // Destroy the session
   req.session.destroy((err) => {
     if (err) {
       return res.status(500).json({ message: "Failed to logout" });
