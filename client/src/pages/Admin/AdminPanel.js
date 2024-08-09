@@ -1,15 +1,15 @@
-// src/pages/WelcomePage.js
-import React, { useEffect, useState } from "react";
+// src/pages/AdminPanel.js
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { FaUserCircle } from "react-icons/fa";
 import { useSessionTimeout } from "../../hooks/userSessionTimeout.js";
 import useUser from "../../hooks/useUser.js";
 
-const WelcomePage = () => {
+const AdminPanel = () => {
   const navigate = useNavigate();
-  const { user, logout } = useUser();
-  const [loading, setLoading] = useState(true);
+  const { user, logout } = useUser(); // Use useUser hook
+  const [loading, setLoading] = React.useState(true);
 
   const handleSessionTimeout = () => {
     logout(); // Use logout from useUser
@@ -22,8 +22,9 @@ const WelcomePage = () => {
   useEffect(() => {
     if (!user) {
       navigate("/login");
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user, navigate]);
 
   const handleLogout = async () => {
@@ -76,7 +77,7 @@ const WelcomePage = () => {
           </button>
         </div>
         <div className="mt-8 text-center">
-          <h1 className="text-2xl font-bold">Welcome to the Home Page!</h1>
+          <h1 className="text-2xl font-bold">Welcome to the Admin Page!</h1>
           <p className="mt-4 text-gray-600">You are successfully logged in.</p>
         </div>
       </div>
@@ -84,4 +85,4 @@ const WelcomePage = () => {
   );
 };
 
-export default WelcomePage;
+export default AdminPanel;

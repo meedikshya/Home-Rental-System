@@ -1,39 +1,18 @@
-import React, { useEffect } from "react";
+// hooks/useSessionTimeout.js
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-export const useSessionTimeout = (timeout = 3600000) => {
-  // Default 1 hour timeout
+export const useSessionTimeout = (timeoutCallback, timeoutDuration) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleUserActivity = () => {
-      // Reset timer on user activity
-      clearTimeout(sessionTimeout);
-      startSessionTimeout();
+    const handleTimeout = () => {
+      timeoutCallback();
+      navigate("/");
     };
 
-    const startSessionTimeout = () => {
-      sessionTimeout = setTimeout(() => {
-        // Log out the user after timeout
-        sessionStorage.removeItem("userEmail");
-        navigate("/login");
-      }, timeout);
-    };
+    const timeoutId = setTimeout(handleTimeout, timeoutDuration);
 
-    // Listen for user activity events
-    window.addEventListener("mousemove", handleUserActivity);
-    window.addEventListener("keydown", handleUserActivity);
-
-    // Start the timeout
-    let sessionTimeout = setTimeout(() => {
-      sessionStorage.removeItem("userEmail");
-      navigate("/login");
-    }, timeout);
-
-    return () => {
-      window.removeEventListener("mousemove", handleUserActivity);
-      window.removeEventListener("keydown", handleUserActivity);
-      clearTimeout(sessionTimeout);
-    };
-  }, [navigate, timeout]);
+    return () => clearTimeout(timeoutId);
+  }, [timeoutCallback, timeoutDuration, navigate]);
 };

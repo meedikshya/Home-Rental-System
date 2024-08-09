@@ -1,20 +1,23 @@
+// src/pages/SignOut.js
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import useUser from "../../hooks/useUser.js";
 
 const SignOut = () => {
   const navigate = useNavigate();
+  const { logout } = useUser();
 
   useEffect(() => {
     const handleLogout = async () => {
       try {
-        const response = await fetch("http://localhost:3000/api/logout", {
+        const response = await fetch("http://localhost:3000/api/auth/logout", {
           method: "POST",
           credentials: "include", // Ensure cookies are sent with the request
         });
 
         if (response.ok) {
-          sessionStorage.removeItem("userEmail"); // Clear session storage
+          logout(); // Use logout from useUser
           toast.success("Logout successful");
           navigate("/"); // Navigate to login page
         } else {
@@ -27,7 +30,7 @@ const SignOut = () => {
     };
 
     handleLogout();
-  }, [navigate]);
+  }, [navigate, logout]);
 
   return <div>Signing out...</div>;
 };
