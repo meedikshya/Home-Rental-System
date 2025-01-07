@@ -16,7 +16,8 @@ export const RegisterForm = ({
     navigate("/");
   };
 
-  const handleRegister = async () => {
+  const handleRegister = async (e) => {
+    e.preventDefault(); // Prevent default form submission
     try {
       setEmailError("");
       setPasswordError("");
@@ -80,47 +81,51 @@ export const RegisterForm = ({
         Create new account
       </h1>
       <div className="bg-white px-10 py-10">
-        <div>
-          <label className="text-sm font-medium">Email address</label>
-          <input
-            className={`w-full border-2 border-gray-100 p-2 mt-3 mb-4 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
-              emailError ? "border-red-500" : ""
-            }`}
-            placeholder="abc@gmail.com"
-            onChange={(event) => {
-              setRegisterEmail(event.target.value);
-              setEmailError("");
-            }}
-            value={registerEmail}
-          />
-          {emailError && <div className="text-red-500 mt-1">{emailError}</div>}
-        </div>
-        <div>
-          <label className="text-sm font-medium">Password</label>
-          <input
-            className={`w-full border-2 border-gray-100 p-2 mt-3 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
-              passwordError ? "border-red-500" : ""
-            }`}
-            placeholder="password"
-            type="password"
-            onChange={(event) => {
-              setRegisterPassword(event.target.value);
-              setPasswordError("");
-            }}
-            value={registerPassword}
-          />
-          {passwordError && (
-            <div className="text-red-500 mt-1">{passwordError}</div>
-          )}
-        </div>
-        <div className="mt-8 flex flex-col gap-y-4">
-          <button
-            onClick={handleRegister}
-            className="py-2 bg-indigo-600 text-white text-lg rounded-md"
-          >
-            Sign up
-          </button>
-        </div>
+        <form onSubmit={handleRegister}>
+          <div>
+            <label className="text-sm font-medium">Email address</label>
+            <input
+              className={`w-full border-2 border-gray-100 p-2 mt-3 mb-4 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
+                emailError ? "border-red-500" : ""
+              }`}
+              placeholder="abc@gmail.com"
+              onChange={(event) => {
+                setRegisterEmail(event.target.value);
+                setEmailError("");
+              }}
+              value={registerEmail}
+              autoComplete="email"
+            />
+            {emailError && <div className="text-red-500 mt-1">{emailError}</div>}
+          </div>
+          <div>
+            <label className="text-sm font-medium">Password</label>
+            <input
+              className={`w-full border-2 border-gray-100 p-2 mt-3 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
+                passwordError ? "border-red-500" : ""
+              }`}
+              placeholder="password"
+              type="password"
+              onChange={(event) => {
+                setRegisterPassword(event.target.value);
+                setPasswordError("");
+              }}
+              value={registerPassword}
+              autoComplete="current-password"
+            />
+            {passwordError && (
+              <div className="text-red-500 mt-1">{passwordError}</div>
+            )}
+          </div>
+          <div className="mt-8 flex flex-col gap-y-4">
+            <button
+              type="submit"
+              className="py-2 bg-indigo-600 text-white text-lg rounded-md"
+            >
+              Sign up
+            </button>
+          </div>
+        </form>
         <div>
           <p className="mt-5 ml-8">
             Already have an account?
