@@ -8,10 +8,11 @@ import {
   Image,
   Dimensions,
 } from "react-native";
-import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import Search from "../../components/ui/search";
+import ApiHandler from "../../api/ApiHandler";
+import ProtectedRoute from "../(auth)/protectedRoute";
 
 const Home = () => {
   const [properties, setProperties] = useState([]);
@@ -22,13 +23,17 @@ const Home = () => {
   useEffect(() => {
     const fetchProperties = async () => {
       try {
+        console.log("Fetching properties...");
         const [propertiesResponse, imagesResponse] = await Promise.all([
-          axios.get("http://192.168.1.86:8000/api/Properties"),
-          axios.get("http://192.168.1.86:8000/api/PropertyImages"),
+          ApiHandler.get("/Properties"),
+          ApiHandler.get("/PropertyImages"),
         ]);
 
-        const propertiesData = propertiesResponse.data;
-        const imagesData = imagesResponse.data;
+        // console.log("Properties response:", propertiesResponse);
+        // console.log("Images response:", imagesResponse);
+
+        const propertiesData = propertiesResponse;
+        const imagesData = imagesResponse;
 
         const propertiesWithImages = propertiesData.map((property) => {
           const propertyImage = imagesData.find(
@@ -100,15 +105,23 @@ const Home = () => {
               resizeMode="cover"
             />
             <View className="flex-row justify-between items-center mt-4">
-              <Text className="text-lg font-semibold">{item.address}</Text>
+              <Text className="text-lg font-semibold">{item.title}</Text>
               <Text className="text-base font-bold text-[#20319D]">
                 {item.status}
               </Text>
             </View>
-            <Text className="text-base text-gray-600">{item.city}</Text>
+            <Text className="text-base text-gray-600">
+              {item.district} | {item.city}, {item.municipality} - {item.ward}
+            </Text>
             <Text className="text-lg font-bold text-gray-800 mt-2">
               Rs. {item.price}
             </Text>
+            <Text className="text-base text-gray-800 mt-2">
+              {item.roomType} | {item.totalBedrooms} bedrooms | |{" "}
+              {item.totalLivingRooms} living rooms | {item.totalWashrooms}{" "}
+              washrooms | {item.totalKitchens} kitchens
+            </Text>
+            <Text className="text-base text-gray-800 mt-2"></Text>
 
             <View className="mt-4 flex-row justify-between items-center w-36">
               <TouchableOpacity
@@ -118,15 +131,22 @@ const Home = () => {
                     pathname: "/(pages)/details-page",
                     params: {
                       propertyId: item.propertyId,
-                      userId: item.userId,
-                      address: item.address,
+                      landlordId: item.landlordId,
+                      title: item.title,
+                      description: item.description,
+                      district: item.district,
                       city: item.city,
+                      municipality: item.municipality,
+                      ward: item.ward,
+                      nearestLandmark: item.nearestLandmark,
                       price: item.price,
-                      propertyType: item.propertyType,
-                      bedrooms: item.bedrooms,
-                      bathrooms: item.bathrooms,
+                      roomType: item.roomType,
                       status: item.status,
                       createdAt: item.createdAt,
+                      totalBedrooms: item.totalBedrooms,
+                      totalLivingRooms: item.totalLivingRooms,
+                      totalWashrooms: item.totalWashrooms,
+                      totalKitchens: item.totalKitchens,
                       image: item.image,
                     },
                   })
@@ -136,7 +156,9 @@ const Home = () => {
               </TouchableOpacity>
 
               <TouchableOpacity className="absolute bottom-2 left-72">
-                <Ionicons name="heart-outline" size={24} color="#20319D" />{" "}
+                <Text>
+                  <Ionicons name="heart-outline" size={24} color="#20319D" />{" "}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -146,4 +168,10 @@ const Home = () => {
   );
 };
 
-export default Home;
+const HomeWithProtectedRoute = () => (
+  <ProtectedRoute>
+    <Home />
+  </ProtectedRoute>
+);
+
+export default HomeWithProtectedRoute;

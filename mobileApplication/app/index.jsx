@@ -1,13 +1,13 @@
 import { StatusBar } from "expo-status-bar";
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for the arrow icon
-import { useRouter } from "expo-router"; // Use `useRouter` instead of Link
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 
 import "nativewind";
 
 const Welcome = () => {
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
 
   return (
     <SafeAreaView className="bg-[#20319D] flex-1">
@@ -29,7 +29,7 @@ const Welcome = () => {
           <View className="w-full flex justify-center items-center px-4 mt-6">
             <TouchableOpacity
               className="bg-white p-3 rounded-lg flex-row items-center"
-              onPress={() => router.push("/(auth)/sign-in")} // Navigate correctly
+              onPress={() => router.push("/(auth)/sign-in")}
             >
               <Text className="text-blue-500 text-lg text-center mr-2">
                 Sign In

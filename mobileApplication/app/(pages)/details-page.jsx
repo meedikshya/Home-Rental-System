@@ -1,123 +1,172 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   SafeAreaView,
   TouchableOpacity,
   Image,
+  ScrollView,
 } from "react-native";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons"; // Import icons
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { useRouter } from "expo-router"; // Import useRouter hook
+import { useRouter } from "expo-router";
+import ApiHandler from "../../api/ApiHandler";
 
 const Details = () => {
-  const navigation = useNavigation(); // Initialize navigation
-  const route = useRoute(); // Initialize route
+  const navigation = useNavigation();
+  const route = useRoute();
   const {
     propertyId,
-    userId,
-    address,
+    landlordId,
+    title,
+    description,
     city,
+    municipality,
+    ward,
+    nearestLandmark,
     price,
-    propertyType,
-    bedrooms,
-    bathrooms,
-    kitchen,
+    roomType,
     status,
-    createdAt,
+    totalBedrooms,
+    totalLivingRooms,
+    totalWashrooms,
+    totalKitchens,
     image,
-  } = route.params; // Get individual property attributes from route params
-  const router = useRouter(); // Initialize router
+  } = route.params;
+  const router = useRouter();
+
+  const [landlordName, setLandlordName] = useState("");
+
+  useEffect(() => {
+    const fetchLandlordName = async () => {
+      try {
+        const response = await ApiHandler.get(`/users/${landlordId}`);
+        setLandlordName(response.email);
+      } catch (error) {
+        console.error("Error fetching landlord name:", error);
+      }
+    };
+
+    fetchLandlordName();
+  }, [landlordId]);
 
   return (
     <SafeAreaView className="bg-white flex-1">
-      {/* Header with back button */}
-      <View className="flex-row items-center p-4">
+      <View className="flex-row items-center p-4 border-b border-gray-200">
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-        <Text className="text-2xl ml-4">Property Details</Text>
+        <Text className="text-2xl ml-4 font-semibold">Property Details</Text>
       </View>
 
-      {/* Property details */}
-      <View className="flex-1 p-5">
+      <ScrollView className="p-5">
         <Image
           source={{ uri: image }}
-          className="w-full h-[350px] rounded-md"
+          className="w-full h-[350px] rounded-lg"
           resizeMode="cover"
         />
+
         <View className="mt-4">
           <View className="flex-row justify-between items-center">
-            <Text className="text-lg font-semibold">{address}</Text>
+            <Text className="text-xl font-bold">{title}</Text>
             <Text className="text-base font-bold text-[#20319D]">{status}</Text>
           </View>
-          <Text className="text-base text-gray-600">{city}</Text>
-          <View className="flex-row items-center mt-2">
-            {bedrooms && (
-              <View className="flex-row items-center mr-4">
+          <Text className="text-lg text-gray-600 mt-1">
+            {city}, {municipality} - {ward}
+          </Text>
+          <Text className="text-lg text-gray-600 mt-1">
+            Property Type: {roomType}
+          </Text>
+
+          {nearestLandmark && (
+            <View className="flex-row items-center mt-3">
+              <Ionicons name="location-outline" size={24} color="#20319D" />
+              <Text className="text-base text-gray-600 ml-1">
+                Nearest Landmark : {nearestLandmark}
+              </Text>
+            </View>
+          )}
+
+          <View className="flex-row flex-wrap mt-4 ">
+            {totalBedrooms && (
+              <View className="flex-row items-center mr-5">
                 <Ionicons name="bed-outline" size={24} color="#20319D" />
-                <Text className="text-base text-gray-600 ml-1">
-                  {bedrooms} bedrooms
+                <Text className="text-base text-gray-600 ml-1 mb-2">
+                  {totalBedrooms} Bedrooms
                 </Text>
               </View>
             )}
-            {bathrooms && (
-              <View className="flex-row items-center mr-4">
+            {totalWashrooms && (
+              <View className="flex-row items-center mr-5">
                 <Ionicons name="water-outline" size={24} color="#20319D" />
                 <Text className="text-base text-gray-600 ml-1">
-                  {bathrooms} bathrooms
+                  {totalWashrooms} Bathrooms
                 </Text>
               </View>
             )}
-            {kitchen && (
-              <View className="flex-row items-center">
+            {totalKitchens && (
+              <View className="flex-row items-center mr-5">
                 <MaterialIcons name="kitchen" size={24} color="#20319D" />
                 <Text className="text-base text-gray-600 ml-1">
-                  {kitchen} kitchen
+                  {totalKitchens} Kitchen
+                </Text>
+              </View>
+            )}
+            {totalLivingRooms && (
+              <View className="flex-row items-center">
+                <Ionicons name="tv-outline" size={24} color="#20319D" />
+                <Text className="text-base text-gray-600 ml-1">
+                  {totalLivingRooms} Living Rooms
                 </Text>
               </View>
             )}
           </View>
-          <View className="border-b border-gray-300 my-3" />
-          <View className="flex-row justify-between items-center mt-1">
-            <Text className="text-base text-gray-600">Property by: Ram</Text>
-            <TouchableOpacity onPress={() => alert("Chat with Ram")}>
+          <View className="border-b border-gray-300 my-4" />
+          <Text className="text-base text-gray-600 leading-relaxed">
+            {description}
+          </Text>
+          <View className="border-b border-gray-300 my-4" />
+          <View className="flex-row justify-between items-center mt-3">
+            <Text className="text-base text-gray-600">
+              Property by: {landlordName}
+            </Text>
+            <TouchableOpacity
+              onPress={() => alert(`Chat with landlord ${landlordName}`)}
+            >
               <Ionicons name="chatbubble-outline" size={24} color="#20319D" />
             </TouchableOpacity>
           </View>
+          <View className="bg-gray-50  rounded-lg shadow-md mt-6">
+            <View className="flex-row justify-between items-center">
+              <Text className="text-xl font-bold text-gray-800">
+                Rs. {price}{" "}
+                <Text className="text-sm text-gray-500">/ per month</Text>
+              </Text>
+              <TouchableOpacity
+                className="bg-[#20319D] p-3 px-6 rounded-lg"
+                onPress={() =>
+                  router.push({
+                    pathname: "agreement-page",
+                    params: {
+                      propertyId,
+                      image,
+                      address: ` ${city}, ${municipality} - ${ward}`,
+                      bedrooms: totalBedrooms,
+                      bathrooms: totalWashrooms,
+                      kitchen: totalKitchens,
+                      price,
+                    },
+                  })
+                }
+              >
+                <Text className="text-white text-lg font-semibold">
+                  Book Now
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </View>
-
-      {/* Actions */}
-      <View className="p-0 absolute bottom-0 left-0 right-0">
-        <View className="bg-white p-4 rounded-md shadow-md shadow-gray-400 flex-row justify-between items-center">
-          <Text className="text-lg font-bold text-gray-800">
-            Rs. {price} <Text className="text-sm">/ per month</Text>
-          </Text>
-
-          <TouchableOpacity
-            className="bg-[#20319D] p-3 rounded-md"
-            onPress={() =>
-              router.push({
-                pathname: "agreement-page",
-                params: {
-                  propertyId,
-                  image,
-                  address,
-                  bedrooms,
-                  bathrooms,
-                  kitchen,
-                  price,
-                },
-              })
-            }
-          >
-            <Text className="text-white w-28 text-center text-base">
-              Book Now
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };

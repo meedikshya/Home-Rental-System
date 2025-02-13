@@ -11,7 +11,7 @@ import { useEffect } from "react";
 import "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context"; // Import SafeAreaView
 
-import { useColorScheme } from "@/hooks/useColorScheme";
+import { useColorScheme } from "../hooks/useColorScheme";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
