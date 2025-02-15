@@ -24,7 +24,7 @@ const FIREBASE_APP =
 const FIREBASE_AUTH =
   getAuth(FIREBASE_APP) ||
   initializeAuth(FIREBASE_APP, {
-    persistence: getReactNativePersistence(AsyncStorage),
+    persistence: getReactNativePersistence(AsyncStorage), // Enable persistence for session
   });
 
 export { FIREBASE_APP, FIREBASE_AUTH };

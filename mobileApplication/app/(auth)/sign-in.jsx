@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Link, useRouter } from "expo-router";
+import React, { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
@@ -8,12 +7,14 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { FIREBASE_AUTH } from "../../firebaseConfig";
-
-import "nativewind";
+import ApiHandler from "../../api/ApiHandler";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SignIn = () => {
   const [isSubmitting, setSubmitting] = useState(false);
@@ -21,29 +22,75 @@ const SignIn = () => {
   const router = useRouter();
 
   const submit = async () => {
+    // Validation
     if (!form.email.trim() || !form.password.trim()) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!emailRegex.test(form.email)) {
+      Alert.alert("Error", "Please enter a valid email");
+      return;
+    }
+
     setSubmitting(true);
+
     try {
-      await signInWithEmailAndPassword(
+      // Firebase authentication - Sign in with email and password
+      const userCredential = await signInWithEmailAndPassword(
         FIREBASE_AUTH,
         form.email,
         form.password
       );
+
+      // Get Firebase ID Token
+      const firebaseToken = await userCredential.user.getIdToken(true);
+      console.log("Firebase Token:", firebaseToken);
+
+      // Send email to backend for JWT
+      const response = await ApiHandler.post("/auth/login", {
+        Email: form.email,
+      });
+
+      // Get JWT from backend response
+      const jwtToken = response.token;
+      console.log("JWT Token:", jwtToken);
+
+      // Store JWT token in AsyncStorage
+      await AsyncStorage.setItem("jwtToken", jwtToken);
+
+      // Set token for future API calls using ApiHandler
+      ApiHandler.setAuthToken(jwtToken);
+
+      // Show success alert
       Alert.alert("Success", "User signed in successfully");
+
+      // Navigate to home page (or tabs)
       router.replace("/(tabs)");
     } catch (error) {
-      let errorMessage = "An unexpected error occurred. Please try again.";
-      if (error.code === "auth/invalid-email")
-        errorMessage = "Invalid email address.";
-      else if (error.code === "auth/user-not-found")
-        errorMessage = "No user found with this email.";
-      else if (error.code === "auth/wrong-password")
-        errorMessage = "Incorrect password.";
+      let errorMessage = "An unexpected error occurred.";
+
+      // Handle Firebase and API errors
+      if (error.code) {
+        // Firebase-specific error handling
+        if (error.code === "auth/wrong-password") {
+          errorMessage = "Incorrect password.";
+        } else if (error.code === "auth/user-not-found") {
+          errorMessage = "User not found.";
+        }
+      } else if (error.response) {
+        // API error handling (from backend)
+        errorMessage = error.response.data.message || errorMessage;
+      } else if (error.request) {
+        errorMessage = "Network error. Please try again.";
+      }
+
+      // Display error message
       Alert.alert("Error", errorMessage);
+
+      // Ensure token is cleared if any error occurs
+      ApiHandler.setAuthToken(null);
     } finally {
       setSubmitting(false);
     }
@@ -69,8 +116,7 @@ const SignIn = () => {
                 keyboardType="email-address"
                 className="text-black"
                 placeholder="Enter your email"
-                accessible
-                accessibilityLabel="Email Input"
+                placeholderTextColor="#888" // Ensure placeholder text color is set
               />
             </View>
           </View>
@@ -84,8 +130,7 @@ const SignIn = () => {
                 secureTextEntry
                 className="text-black"
                 placeholder="Enter your password"
-                accessible
-                accessibilityLabel="Password Input"
+                placeholderTextColor="#888" // Ensure placeholder text color is set
               />
             </View>
           </View>
@@ -94,10 +139,14 @@ const SignIn = () => {
             onPress={submit}
             className="bg-[#20319D] p-3 rounded-lg flex-row items-center mt-7"
             disabled={isSubmitting}
-            accessible
-            accessibilityLabel="Sign In Button"
           >
-            <Text className="text-white text-lg text-center mr-2">Sign In</Text>
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text className="text-white text-lg text-center mr-2">
+                Sign In
+              </Text>
+            )}
             <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
 
@@ -105,12 +154,11 @@ const SignIn = () => {
             <Text className="text-lg text-gray-700">
               Don't have an account?
             </Text>
-            <Link
-              href="/(auth)/sign-up"
-              className="text-lg font-semibold text-[#20319D]"
-            >
-              Signup
-            </Link>
+            <TouchableOpacity onPress={() => router.push("(auth)/sign-up")}>
+              <Text className="text-lg font-semibold text-[#20319D]">
+                Sign Up
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>

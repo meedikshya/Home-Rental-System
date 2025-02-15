@@ -1,9 +1,18 @@
-import { Text, View, TouchableOpacity, StyleSheet, Image } from "react-native";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Alert,
+} from "react-native";
 import React from "react";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { signOut } from "firebase/auth"; // Import Firebase signOut method
-import { FIREBASE_AUTH } from "../../firebaseConfig"; // Make sure you import your Firebase config
+import { signOut } from "firebase/auth";
+import { FIREBASE_AUTH } from "../../firebaseConfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import ApiHandler from "../../api/ApiHandler";
 
 const Profile = () => {
   const router = useRouter();
@@ -11,11 +20,21 @@ const Profile = () => {
   const handleLogout = async () => {
     try {
       // Perform logout logic here
-      await signOut(FIREBASE_AUTH); // Sign out user
-      router.push("/(auth)/sign-in"); // Navigate to sign-in screen
+      await signOut(FIREBASE_AUTH); // Sign out user from Firebase
+
+      // Clear JWT token from AsyncStorage
+      await AsyncStorage.removeItem("jwtToken");
+
+      // Clear the token in ApiHandler
+      ApiHandler.setAuthToken(null);
+
+      Alert.alert("Success", "User logged out successfully");
+
+      // Navigate to sign-in screen
+      router.replace("/(auth)/sign-in");
     } catch (error) {
       console.error("Logout failed: ", error);
-      // Handle any errors, you might want to show an alert here
+      Alert.alert("Error", "An unexpected error occurred. Please try again.");
     }
   };
 

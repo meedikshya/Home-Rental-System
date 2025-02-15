@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
+  Alert,
 } from "react-native";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -40,8 +41,11 @@ const Details = () => {
   useEffect(() => {
     const fetchLandlordName = async () => {
       try {
-        const response = await ApiHandler.get(`/users/${landlordId}`);
-        setLandlordName(response.email);
+        const userDetailsResponse = await ApiHandler.get(
+          `/UserDetails?userId=${landlordId}`
+        );
+        const { firstName, lastName } = userDetailsResponse[0];
+        setLandlordName(`${firstName} ${lastName}`);
       } catch (error) {
         console.error("Error fetching landlord name:", error);
       }
@@ -49,6 +53,36 @@ const Details = () => {
 
     fetchLandlordName();
   }, [landlordId]);
+
+  const handleBookNow = async () => {
+    try {
+      const bookingData = {
+        userId: landlordId, // Assuming the userId is the landlordId, adjust as needed
+        propertyId,
+        status: "Pending",
+        bookingDate: new Date().toISOString(),
+      };
+
+      await ApiHandler.post("/bookings", bookingData);
+
+      Alert.alert("Success", "Booking has been made successfully!");
+      router.push({
+        pathname: "agreement-page",
+        params: {
+          propertyId,
+          image,
+          address: ` ${city}, ${municipality} - ${ward}`,
+          bedrooms: totalBedrooms,
+          bathrooms: totalWashrooms,
+          kitchen: totalKitchens,
+          price,
+        },
+      });
+    } catch (error) {
+      console.error("Error making booking:", error);
+      Alert.alert("Error", "Failed to make booking. Please try again.");
+    }
+  };
 
   return (
     <SafeAreaView className="bg-white flex-1">
@@ -144,20 +178,7 @@ const Details = () => {
               </Text>
               <TouchableOpacity
                 className="bg-[#20319D] p-3 px-6 rounded-lg"
-                onPress={() =>
-                  router.push({
-                    pathname: "agreement-page",
-                    params: {
-                      propertyId,
-                      image,
-                      address: ` ${city}, ${municipality} - ${ward}`,
-                      bedrooms: totalBedrooms,
-                      bathrooms: totalWashrooms,
-                      kitchen: totalKitchens,
-                      price,
-                    },
-                  })
-                }
+                onPress={handleBookNow}
               >
                 <Text className="text-white text-lg font-semibold">
                   Book Now

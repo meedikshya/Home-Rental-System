@@ -29,9 +29,6 @@ const Home = () => {
           ApiHandler.get("/PropertyImages"),
         ]);
 
-        // console.log("Properties response:", propertiesResponse);
-        // console.log("Images response:", imagesResponse);
-
         const propertiesData = propertiesResponse;
         const imagesData = imagesResponse;
 
@@ -95,37 +92,66 @@ const Home = () => {
         }
         renderItem={({ item }) => (
           <View
-            className={`mb-4 ml-2 p-4 bg-gray-100 rounded-md shadow-md ${
-              isLargeScreen ? "w-[55%]" : "w-[95%]"
+            className={`mb-4 ml-2 p-4 bg-white rounded-lg shadow-lg ${
+              isLargeScreen ? "w-[45%]" : "w-[95%]"
             } justify-center`}
           >
             <Image
               source={{ uri: item.image }}
-              className="w-full h-[350px] rounded-md"
+              className="w-full h-[300px] rounded-lg"
               resizeMode="cover"
             />
             <View className="flex-row justify-between items-center mt-4">
-              <Text className="text-lg font-semibold">{item.title}</Text>
+              <Text className="text-xl font-bold text-gray-800">
+                {item.title}
+              </Text>
               <Text className="text-base font-bold text-[#20319D]">
                 {item.status}
               </Text>
             </View>
-            <Text className="text-base text-gray-600">
-              {item.district} | {item.city}, {item.municipality} - {item.ward}
-            </Text>
-            <Text className="text-lg font-bold text-gray-800 mt-2">
-              Rs. {item.price}
-            </Text>
-            <Text className="text-base text-gray-800 mt-2">
-              {item.roomType} | {item.totalBedrooms} bedrooms | |{" "}
-              {item.totalLivingRooms} living rooms | {item.totalWashrooms}{" "}
-              washrooms | {item.totalKitchens} kitchens
-            </Text>
-            <Text className="text-base text-gray-800 mt-2"></Text>
+            {item.city && item.municipality && item.ward && (
+              <Text className="text-lg text-gray-600 mt-1">
+                {item.city}, {item.municipality} - {item.ward}
+              </Text>
+            )}
+            {item.roomType && (
+              <Text className="text-lg text-gray-600 mt-1">
+                Property Type: {item.roomType}
+              </Text>
+            )}
+            <View className="flex-row flex-wrap mt-2">
+              {item.totalBedrooms && (
+                <Text className="text-base text-gray-800 mr-2">
+                  {item.totalBedrooms} bedrooms
+                </Text>
+              )}
+              {item.totalLivingRooms && (
+                <Text className="text-base text-gray-800 mr-2">
+                  {item.totalLivingRooms} living rooms
+                </Text>
+              )}
+              {item.totalWashrooms && (
+                <Text className="text-base text-gray-800 mr-2">
+                  {item.totalWashrooms} washrooms
+                </Text>
+              )}
+              {item.totalKitchens && (
+                <Text className="text-base text-gray-800 mr-2">
+                  {item.totalKitchens} kitchens
+                </Text>
+              )}
+            </View>
+            {item.price && (
+              <Text className="text-lg font-bold text-[#20319D] mt-2">
+                Rs. {item.price}
+              </Text>
+            )}
 
-            <View className="mt-4 flex-row justify-between items-center w-36">
+            {/* Updated Button and Favorite Icon Layout */}
+            <View className="mt-4 flex-row justify-between items-center">
               <TouchableOpacity
-                className="flex-1 bg-[#20319D] p-2 rounded-xl mr-2"
+                className="bg-[#20319D] p-3 rounded-lg"
+                style={{ width: "50%" }} // Adjust width here
                 onPress={() =>
                   router.push({
                     pathname: "/(pages)/details-page",
@@ -152,13 +178,14 @@ const Home = () => {
                   })
                 }
               >
-                <Text className="text-white text-center">View Details</Text>
+                <Text className="text-white text-center text-base">
+                  View Details
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className="absolute bottom-2 left-72">
-                <Text>
-                  <Ionicons name="heart-outline" size={24} color="#20319D" />{" "}
-                </Text>
+              {/* Favorite Icon */}
+              <TouchableOpacity>
+                <Ionicons name="heart-outline" size={30} color="#20319D" />
               </TouchableOpacity>
             </View>
           </View>

@@ -1,16 +1,17 @@
 import React from "react";
 import { View, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { FIREBASE_AUTH } from "../../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { FIREBASE_AUTH } from "../../firebaseConfig";
 
+// ProtectedRoute component to protect authenticated routes
 const ProtectedRoute = ({ children }) => {
   const [loading, setLoading] = React.useState(true);
   const [authenticated, setAuthenticated] = React.useState(false);
   const router = useRouter();
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (user) => {
+    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, async (user) => {
       if (user) {
         setAuthenticated(true);
       } else {
@@ -31,7 +32,9 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  if (!authenticated) return null;
+  if (!authenticated) {
+    return null;
+  }
 
   return children;
 };

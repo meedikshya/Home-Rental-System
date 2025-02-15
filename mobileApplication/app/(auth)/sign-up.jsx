@@ -8,6 +8,7 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -25,9 +26,16 @@ const SignUp = () => {
       return;
     }
 
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!emailRegex.test(form.email)) {
+      Alert.alert("Error", "Please enter a valid email");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
+      // Firebase authentication
       const userCredential = await createUserWithEmailAndPassword(
         FIREBASE_AUTH,
         form.email,
@@ -37,7 +45,7 @@ const SignUp = () => {
       const response = await ApiHandler.post("/Users", {
         email: form.email,
         passwordHash: form.password,
-        userRole: "Renter",
+        userRole: "Renter", // Default role, can be dynamic based on your needs
       });
 
       if (response && response.userId) {
@@ -51,7 +59,8 @@ const SignUp = () => {
       }
     } catch (error) {
       console.error("API Error:", error);
-      Alert.alert("Error", error.response?.data?.message || error.message);
+      const errorMessage = error.response?.data?.message || error.message;
+      Alert.alert("Error", errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +74,7 @@ const SignUp = () => {
             GHARBHADA
           </Text>
           <Text className="text-2xl font-semibold text-[#20319D] mt-5">
-            Register in to Gharbhada
+            Register to Gharbhada
           </Text>
 
           <View className="w-full mt-7">
@@ -77,6 +86,7 @@ const SignUp = () => {
                 keyboardType="email-address"
                 className="text-black"
                 placeholder="Enter your email"
+                placeholderTextColor="#888" // Ensure placeholder text color is set
               />
             </View>
           </View>
@@ -90,6 +100,7 @@ const SignUp = () => {
                 secureTextEntry
                 className="text-black"
                 placeholder="Enter your password"
+                placeholderTextColor="#888" // Ensure placeholder text color is set
               />
             </View>
           </View>
@@ -99,7 +110,13 @@ const SignUp = () => {
             className="bg-[#20319D] p-3 rounded-lg flex-row items-center mt-7"
             disabled={isSubmitting}
           >
-            <Text className="text-white text-lg text-center mr-2">Sign Up</Text>
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text className="text-white text-lg text-center mr-2">
+                Sign Up
+              </Text>
+            )}
             <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
 
@@ -111,7 +128,7 @@ const SignUp = () => {
               href="/(auth)/sign-in"
               className="text-lg font-semibold text-[#20319D]"
             >
-              Sign in
+              Sign In
             </Link>
           </View>
         </View>
