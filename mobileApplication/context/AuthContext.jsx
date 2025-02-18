@@ -1,72 +1,37 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import {
-  onAuthStateChanged,
-  signOut,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
-import { FIREBASE_AUTH } from "../firebaseConfig";
-import ApiHandler from "../ApiHandler"; // Import your ApiHandler
+import { getAuth } from "firebase/auth";
+import ApiHandler from "../api/ApiHandler"; // Import ApiHandler
 
-// Create the AuthContext to manage authentication state
-const AuthContext = createContext();
+// Function to get user data from Firebase
+export const getUserDataFromFirebase = async () => {
+  try {
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
 
-// AuthProvider component to manage authentication state across the app
-export const AuthProvider = ({ children }) => {
-  const [authState, setAuthState] = useState({ user: null, loading: true });
+    if (currentUser) {
+      const firebaseUserId = currentUser.uid; // Get the Firebase user ID
+      console.log("Firebase User ID:", firebaseUserId);
 
-  // Monitor auth state changes using Firebase
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (user) => {
-      if (user) {
-        // After user logs in, fetch Firebase ID Token
-        user.getIdToken().then((idToken) => {
-          console.log("Firebase ID Token:", idToken);
-          // Send the ID Token to backend API
-          ApiHandler.saveToken(idToken); // Save the token using your ApiHandler
-        });
-      }
-      setAuthState({ user, loading: false });
-    });
-
-    // Cleanup listener on component unmount
-    return () => unsubscribe();
-  }, []);
-
-  // Login handler (signIn using Firebase Authentication)
-  const onLogin = async (email, password) => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(
-        FIREBASE_AUTH,
-        email,
-        password
+      // Fetch user data from the database using the Firebase user ID
+      const response = await ApiHandler.get(
+        `/Users/firebase/${firebaseUserId}`
       );
-      const idToken = await userCredential.user.getIdToken();
-      console.log("Generated Firebase ID Token:", idToken);
-      // Send the ID token to the backend
-      ApiHandler.saveToken(idToken); // Save token for API requests
-      setAuthState({ user: userCredential.user, loading: false });
-    } catch (error) {
-      console.error("Error during login:", error);
-    }
-  };
 
-  // Logout handler
-  const onLogout = async () => {
-    try {
-      await signOut(FIREBASE_AUTH);
-      setAuthState({ user: null, loading: false }); // Reset state after sign out
-      ApiHandler.removeToken(); // Remove token from API handler
-    } catch (error) {
-      console.error("Error logging out:", error);
-    }
-  };
+      console.log("API Response:", response);
 
-  return (
-    <AuthContext.Provider value={{ authState, onLogin, onLogout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+      if (response) {
+        const userId = response; // Treat response.data as a plain string
+        console.log("User ID retrieved:", userId);
+        return userId; // Return the userId from the database
+      } else {
+        console.log("No user data returned from the API.");
+        return null; // No user data returned from the API
+      }
+    } else {
+      console.log("No current user found.");
+      return null; // No user logged in
+    }
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+    return null; // In case of error, return null or handle accordingly
+  }
 };
-
-// Custom hook to access the auth context
-export const useAuth = () => useContext(AuthContext);

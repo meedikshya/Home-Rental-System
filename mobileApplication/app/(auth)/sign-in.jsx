@@ -51,6 +51,7 @@ const SignIn = () => {
       // Send email to backend for JWT
       const response = await ApiHandler.post("/auth/login", {
         Email: form.email,
+        firebaseUId: userCredential.user.uid, // Include Firebase user ID in the request
       });
 
       // Get JWT from backend response

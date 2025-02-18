@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import {
   Text,
   View,
@@ -7,18 +7,40 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import Search from "../../components/ui/search";
 import ApiHandler from "../../api/ApiHandler";
 import ProtectedRoute from "../(auth)/protectedRoute";
+import { getUserDataFromFirebase } from "../../context/AuthContext";
 
 const Home = () => {
   const [properties, setProperties] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [favorites, setFavorites] = useState([]);
   const router = useRouter();
+
+  // Fetch current user ID from Firebase
+  useEffect(() => {
+    const fetchCurrentUserId = async () => {
+      try {
+        const userId = await getUserDataFromFirebase();
+        console.log("Fetched Firebase User ID:", userId); // Log user ID
+        if (userId) {
+          setCurrentUserId(userId);
+        }
+      } catch (error) {
+        console.error("Error fetching user data from Firebase:", error);
+        Alert.alert("Error", "Unable to fetch user data.");
+      }
+    };
+
+    fetchCurrentUserId();
+  }, []);
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -55,6 +77,86 @@ const Home = () => {
 
     fetchProperties();
   }, []);
+
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      console.log("Fetching favorites for user ID:", currentUserId); // Add logging
+      const favoritesResponse = await ApiHandler.get(
+        `/Favourites/user/${currentUserId}`
+      );
+      console.log("Favorites Response:", favoritesResponse); // Log the full response
+      const favoritePropertyIds = favoritesResponse.map(
+        (favorite) => favorite.propertyId
+      );
+      setFavorites(favoritePropertyIds);
+    };
+
+    if (currentUserId) {
+      fetchFavorites();
+    }
+  }, [currentUserId]);
+
+  const handleAddToFavorites = async (propertyId) => {
+    try {
+      const favoriteData = {
+        userId: currentUserId,
+        propertyId: propertyId,
+      };
+
+      await ApiHandler.post("/Favourites", favoriteData);
+      setFavorites([...favorites, propertyId]);
+      Alert.alert("Success", "Property added to favorites.");
+    } catch (error) {
+      console.error("Error adding to favorites:", error);
+      Alert.alert("Error", "Failed to add property to favorites.");
+    }
+  };
+
+  const handleRemoveFromFavorites = async (propertyId) => {
+    try {
+      console.log("Removing favorite for user ID:", currentUserId);
+      console.log("Property ID to remove:", propertyId); // Add logging to check the propertyId
+
+      // Check if propertyId is valid
+      if (!propertyId) {
+        throw new Error("Invalid propertyId.");
+      }
+
+      // Send DELETE request to remove the favorite
+      const response = await ApiHandler.delete(
+        `/Favourites/remove?userId=${currentUserId}&propertyId=${propertyId}`
+      );
+
+      setFavorites((prevFavorites) =>
+        prevFavorites.filter((fav) => fav !== propertyId)
+      );
+      Alert.alert("Success", "Property removed from favorites.");
+    } catch (error) {
+      console.error("Error removing from favorites:", error.message || error);
+      Alert.alert("Error", "Failed to remove property from favorites.");
+    }
+  };
+
+  const handleFavoritePress = (propertyId) => {
+    if (favorites.includes(propertyId)) {
+      Alert.alert(
+        "Remove from Favorites",
+        "Are you sure you want to remove this property from your favorites?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Yes",
+            onPress: () => handleRemoveFromFavorites(propertyId),
+          },
+        ]
+      );
+    } else {
+      handleAddToFavorites(propertyId);
+    }
+  };
 
   if (loading) {
     return (
@@ -184,8 +286,18 @@ const Home = () => {
               </TouchableOpacity>
 
               {/* Favorite Icon */}
-              <TouchableOpacity>
-                <Ionicons name="heart-outline" size={30} color="#20319D" />
+              <TouchableOpacity
+                onPress={() => handleFavoritePress(item.propertyId)}
+              >
+                <Ionicons
+                  name={
+                    favorites.includes(item.propertyId)
+                      ? "heart"
+                      : "heart-outline"
+                  }
+                  size={30}
+                  color="#20319D"
+                />
               </TouchableOpacity>
             </View>
           </View>

@@ -68,6 +68,25 @@ class ApiHandler {
     }
   }
 
+  // PUT request
+  async put(endpoint, data) {
+    try {
+      const response = await this.api.put(endpoint, data);
+      return response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  // DELETE request
+  async delete(endpoint) {
+    try {
+      const response = await this.api.delete(endpoint);
+      return response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
 
   // Handle errors
   handleError(error) {

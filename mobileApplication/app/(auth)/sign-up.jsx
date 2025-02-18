@@ -42,10 +42,13 @@ const SignUp = () => {
         form.password
       );
 
+      const firebaseUserId = userCredential.user.uid; // Get the Firebase user ID
+
       const response = await ApiHandler.post("/Users", {
         email: form.email,
         passwordHash: form.password,
         userRole: "Renter", // Default role, can be dynamic based on your needs
+        firebaseUId: firebaseUserId, // Store the Firebase user ID in your database
       });
 
       if (response && response.userId) {

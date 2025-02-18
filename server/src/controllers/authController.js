@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import db from "../db/connection.js";
-import { generateToken } from "../utils/authUtils.js"; // Function to generate JWT token
-import admin from "../firebase-config.js"; // Import Firebase Admin SDK
+import { generateToken } from "../utils/authUtils.js";
+import admin from "../firebase-config.js";
 
 const saltRounds = 10;
 const JWT_SECRET = process.env.JWT_SECRET || "fjhfkhdk";

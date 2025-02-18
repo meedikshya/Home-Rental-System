@@ -17,7 +17,7 @@ export const RegisterForm = ({
   };
 
   const handleRegister = async (e) => {
-    e.preventDefault(); // Prevent default form submission
+    e.preventDefault();
     try {
       setEmailError("");
       setPasswordError("");
@@ -60,7 +60,7 @@ export const RegisterForm = ({
       });
 
       if (!response.ok) {
-        const responseText = await response.text(); // Read response as text
+        const responseText = await response.text();
         try {
           const errorData = JSON.parse(responseText);
           throw new Error(errorData.error || "Registration failed");
@@ -96,7 +96,9 @@ export const RegisterForm = ({
               value={registerEmail}
               autoComplete="email"
             />
-            {emailError && <div className="text-red-500 mt-1">{emailError}</div>}
+            {emailError && (
+              <div className="text-red-500 mt-1">{emailError}</div>
+            )}
           </div>
           <div>
             <label className="text-sm font-medium">Password</label>

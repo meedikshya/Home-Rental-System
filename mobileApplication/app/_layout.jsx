@@ -9,7 +9,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context"; // Import SafeAreaView
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../context/AuthContext";
 
 import { useColorScheme } from "../hooks/useColorScheme";
 

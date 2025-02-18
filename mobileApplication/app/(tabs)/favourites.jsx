@@ -1,29 +1,45 @@
 import React, { useEffect, useState } from "react";
-import { Text, View, FlatList, Image, ActivityIndicator } from "react-native";
-import axios from "axios";
+import {
+  Text,
+  View,
+  FlatList,
+  Image,
+  ActivityIndicator,
+  TouchableOpacity,
+  Alert,
+} from "react-native";
+import ApiHandler from "../../api/ApiHandler";
 
 const Favourites = () => {
   const [favourites, setFavourites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     const fetchFavourites = async () => {
       try {
-        const response = await axios.get(
-          "http://192.168.1.86:8000/api/Favourites"
-        );
+        const response = await ApiHandler.get("/Favourites");
         const favouritesData = response.data;
+
+        if (!Array.isArray(favouritesData)) {
+          throw new Error("Invalid API response format");
+        }
 
         const favouritesWithProperties = await Promise.all(
           favouritesData.map(async (favourite) => {
-            const propertyResponse = await axios.get(
-              `http://192.168.1.86:8000/api/Properties/${favourite.propertyId}`
+            const propertyResponse = await ApiHandler.get(
+              `/Properties/${favourite.propertyId}`
             );
+            const propertyImageResponse = await ApiHandler.get(
+              `/PropertyImages?propertyId=${favourite.propertyId}`
+            );
+            const propertyImage =
+              propertyImageResponse.data[0]?.imageUrl ||
+              "https://via.placeholder.com/300.png";
             return {
               ...favourite,
               property: propertyResponse.data,
+              imageUrl: propertyImage,
             };
           })
         );
@@ -39,6 +55,21 @@ const Favourites = () => {
 
     fetchFavourites();
   }, []);
+
+  const handleRemoveFavourite = async (favouriteId) => {
+    try {
+      await ApiHandler.delete(`/Favourites/${favouriteId}`);
+      setFavourites((prevFavourites) =>
+        prevFavourites.filter(
+          (favourite) => favourite.favouriteId !== favouriteId
+        )
+      );
+      Alert.alert("Success", "Favourite removed successfully.");
+    } catch (error) {
+      console.error("Error removing favourite:", error);
+      Alert.alert("Error", "Failed to remove favourite.");
+    }
+  };
 
   if (loading) {
     return (
@@ -61,28 +92,28 @@ const Favourites = () => {
       data={favourites}
       keyExtractor={(item) => item.favouriteId.toString()}
       renderItem={({ item }) => {
-        const imageUrl =
-          item.property?.image || "https://via.placeholder.com/300.png";
-
         return (
-          <View className="p-4 border-b border-gray-300">
+          <View className="p-4 border-b border-gray-300 flex-row">
             <Image
-              source={{
-                uri: imageError
-                  ? "https://via.placeholder.com/300.png"
-                  : imageUrl,
-              }}
-              className="w-full h-48 rounded-lg mb-2"
+              source={{ uri: item.imageUrl }}
+              className="w-28 h-28 rounded-lg"
               resizeMode="cover"
-              onError={() => setImageError(true)}
             />
-            <Text className="text-lg font-semibold">
-              {item.property?.address}
-            </Text>
-            <Text className="text-gray-600">{item.property?.city}</Text>
-            <Text className="text-green-600 font-bold">
-              ${item.property?.price}
-            </Text>
+            <View className="ml-4 flex-1">
+              <Text className="text-lg font-semibold">
+                {item.property?.title}
+              </Text>
+              <Text className="text-gray-600">{item.property?.city}</Text>
+              <Text className="text-green-600 font-bold">
+                Rs. {item.property?.price}
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="bg-red-500 p-2 rounded-lg"
+              onPress={() => handleRemoveFavourite(item.favouriteId)}
+            >
+              <Text className="text-white">Remove</Text>
+            </TouchableOpacity>
           </View>
         );
       }}
