@@ -1,144 +1,165 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   FlatList,
   ActivityIndicator,
+  Image,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
-import { useRoute } from "@react-navigation/native";
-import useChat from "../../hooks/useChat";
-import MessageInput from "../../components/ui/MessageInput";
 import { getAuth } from "firebase/auth";
+import { useRouter } from "expo-router";
+import { getAssociatedUsers } from "../../firebaseConfig";
+import { getUserDataFromFirebaseId } from "../../context/AuthContext";
 import ApiHandler from "../../api/ApiHandler";
 
-const Chat = () => {
-  const route = useRoute();
-  const { landlordId, landlordName, renterName } = route.params;
-
+const ChatList = () => {
+  const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [landlordFirebaseId, setLandlordFirebaseId] = useState(null);
+  const [chatUsers, setChatUsers] = useState([]); // Array of objects: { firebaseId, userId, fullName }
+  const [renterName, setRenterName] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  // Fetch current user ID from Firebase
+  // Fetch current user's Firebase ID
   useEffect(() => {
-    const fetchCurrentUserId = async () => {
-      try {
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
-
-        if (currentUser) {
-          const firebaseUserId = currentUser.uid; // Get the Firebase user ID
-          console.log("Firebase User ID:", firebaseUserId);
-
-          // Fetch user data from the database using the Firebase user ID
-          const response = await ApiHandler.get(
-            `/Users/firebase/${firebaseUserId}`
-          );
-
-          console.log("API Response:", response);
-
-          if (response) {
-            const userId = response; // Treat response.data as a plain string
-            console.log("User ID retrieved:", userId);
-            setCurrentUserId(userId); // Set the current user ID
-          } else {
-            console.log("No user data returned from the API.");
-          }
-        } else {
-          console.log("No current user found.");
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-      }
-    };
-
-    fetchCurrentUserId();
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      console.log("Firebase User ID:", currentUser.uid);
+      setCurrentUserId(currentUser.uid);
+    } else {
+      console.log("No current user found.");
+      setLoading(false);
+    }
   }, []);
 
-  // Fetch landlord's Firebase ID
-  useEffect(() => {
-    const fetchLandlordFirebaseId = async () => {
-      try {
-        const response = await ApiHandler.get(
-          `/Users/firebaseByUserId/${landlordId}`
-        );
-
-        console.log("Landlord Firebase ID Response:", response);
-
-        if (response) {
-          const firebaseId = response; // Treat response.data as a plain string
-          console.log("Landlord Firebase ID retrieved:", firebaseId);
-          setLandlordFirebaseId(firebaseId); // Set the landlord's Firebase ID
-        } else {
-          console.log("No landlord Firebase ID returned from the API.");
-        }
-      } catch (error) {
-        console.error("Error fetching landlord Firebase ID:", error);
+  // Fetch renter's full name
+  const fetchRenterName = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      const userId = await getUserDataFromFirebaseId(currentUserId);
+      if (!userId) return;
+      const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
+      if (response) {
+        const { firstName, lastName } = response;
+        setRenterName(`${firstName} ${lastName}`);
       }
-    };
-
-    if (landlordId) {
-      fetchLandlordFirebaseId();
+    } catch (error) {
+      console.error("Error fetching renter's full name:", error);
     }
-  }, [landlordId]);
+  }, [currentUserId]);
 
-  const chatId = `chat_${currentUserId}_${landlordId}`; // Unique chat ID
+  // Fetch associated chat users, then get their user IDs and full names.
+  const fetchChatUsers = useCallback(async () => {
+    if (!currentUserId) return;
+    setLoading(true);
+    try {
+      console.log("Fetching chat users for:", currentUserId);
+      const associatedFirebaseIds = await getAssociatedUsers(currentUserId);
+      console.log("Fetched Firebase IDs:", associatedFirebaseIds);
 
-  const { messages, loading, error, sendNewMessage } = useChat(chatId);
+      if (!associatedFirebaseIds || associatedFirebaseIds.length === 0) {
+        setChatUsers([]);
+        return;
+      }
 
-  if (loading) {
-    return (
-      <SafeAreaView className="flex-1 bg-[#f0f0f0]">
-        <ActivityIndicator size="large" color="#128C7E" />
-      </SafeAreaView>
-    );
-  }
+      const usersWithIds = await Promise.all(
+        associatedFirebaseIds.map(async (firebaseId) => {
+          try {
+            const userId = await getUserDataFromFirebaseId(firebaseId);
+            if (!userId) return null;
+            const userDetailsResponse = await ApiHandler.get(
+              `/UserDetails/userId/${userId}`
+            );
+            let fullName = "";
+            if (userDetailsResponse) {
+              const { firstName, lastName } = userDetailsResponse;
+              fullName = `${firstName} ${lastName}`;
+            }
+            console.log(
+              `Firebase ID: ${firebaseId}, User ID: ${userId}, Full Name: ${fullName}`
+            );
+            return { firebaseId, userId, fullName };
+          } catch (error) {
+            console.error(`Error converting Firebase ID ${firebaseId}:`, error);
+            return null;
+          }
+        })
+      );
+      setChatUsers(usersWithIds.filter(Boolean));
+    } catch (error) {
+      console.error("Error fetching chat users:", error);
+      Alert.alert("Error", "Failed to fetch chat users.");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUserId]);
 
-  if (error) {
-    return (
-      <SafeAreaView className="flex-1 bg-[#f0f0f0]">
-        <Text className="text-center text-red-500 text-lg">Error: {error}</Text>
-      </SafeAreaView>
-    );
-  }
+  useEffect(() => {
+    fetchRenterName();
+    fetchChatUsers();
+  }, [fetchRenterName, fetchChatUsers]);
+
+  // Navigate to Chat screen for conversation with a specific user.
+  const handleUserClick = (user) => {
+    router.push({
+      pathname: "/(pages)/chat-page",
+      params: {
+        landlordId: user.userId, // conversation partner's user ID
+        landlordName: user.fullName, // conversation partner's full name
+        renterName: renterName || "Unknown Renter",
+      },
+    });
+  };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#f0f0f0]">
-      {/* Chat Header */}
-      <View className="p-4 bg-[#128C7E]">
-        <Text className="text-2xl font-bold text-white">
-          Chat with {landlordName}
+    <View className="flex-1 bg-blue-50 p-4">
+      <Text className="text-2xl font-bold text-center mb-6 text-[#20319D]">
+        Chats
+      </Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#1DA1F2" className="my-4" />
+      ) : chatUsers.length > 0 ? (
+        <FlatList
+          data={chatUsers}
+          keyExtractor={(item) =>
+            item.firebaseId
+              ? `UserID-${item.firebaseId}`
+              : Math.random().toString()
+          }
+          contentContainerStyle={{ paddingBottom: 20 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              className="flex-row items-center bg-white p-4 rounded-lg mb-3 shadow-md border-l-4 border-[#20319D]"
+              onPress={() => handleUserClick(item)}
+            >
+              <Image
+                source={{
+                  uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    item.fullName || "User"
+                  )}&background=1DA1F2&color=fff`,
+                }}
+                className="w-12 h-12 rounded-full"
+              />
+              <View className="ml-4">
+                <Text className="text-lg font-semibold text-[#20319D]">
+                  {item.fullName ? item.fullName : "Unknown User"}
+                </Text>
+                <Text className="text-sm text-blue-600">
+                  User ID: {item.userId}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      ) : (
+        <Text className="text-center text-lg text-[#20319D] mt-8">
+          No recent chats found.
         </Text>
-      </View>
-
-      {/* Messages List */}
-      <FlatList
-        data={messages}
-        renderItem={({ item }) => (
-          <View
-            className={`p-4 my-2 rounded-lg max-w-[75%] self-end bg-[#dcf8c6]`}
-          >
-            <Text className="text-sm text-[#4a4a4a]">
-              {renterName}: {item.text.text} {/* Show only renter's name */}
-            </Text>
-          </View>
-        )}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
-      />
-
-      {/* Message Input */}
-      <MessageInput
-        onSendMessage={(message) =>
-          sendNewMessage({
-            text: message,
-            senderId: currentUserId,
-            receiverId: landlordFirebaseId,
-          })
-        }
-      />
-    </SafeAreaView>
+      )}
+    </View>
   );
 };
 
-export default Chat;
+export default ChatList;

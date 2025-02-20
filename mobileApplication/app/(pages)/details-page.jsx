@@ -43,6 +43,7 @@ const Details = () => {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [isBooked, setIsBooked] = useState(false);
   const [bookingId, setBookingId] = useState(null);
+  const [renterName, setRenterName] = useState("");
 
   // Fetch current user ID from Firebase
   useEffect(() => {
@@ -61,6 +62,23 @@ const Details = () => {
 
     fetchCurrentUserId();
   }, []);
+
+  // Fetch renter's full name
+  const fetchRenterName = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      const userId = await getUserDataFromFirebaseId(currentUserId);
+      if (!userId) return;
+      const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
+      if (response) {
+        const { firstName, lastName } = response;
+        setRenterName(`${firstName} ${lastName}`);
+      }
+    } catch (error) {
+      console.error("Error fetching renter's full name:", error);
+    }
+    fetchRenterName();
+  }, [currentUserId]);
 
   console.log("Received Route Params:", route.params);
   console.log("Received Landlord ID:", route.params.landlordId);
@@ -214,7 +232,7 @@ const Details = () => {
   // Handle "Chat" button press
   const handleChat = () => {
     router.push({
-      pathname: "/(tabs)/chat",
+      pathname: "/(pages)/chat-page",
       params: {
         landlordId,
         landlordName,

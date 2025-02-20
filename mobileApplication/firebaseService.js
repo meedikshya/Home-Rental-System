@@ -1,42 +1,91 @@
-// import {
-//   doc,
-//   updateDoc,
-//   arrayUnion,
-//   serverTimestamp,
-//   getDoc,
-//   setDoc,
-// } from "firebase/firestore";
-// import { FIREBASE_DB } from "./firebaseConfig";
+// /src/firebaseConfig.js
+import { initializeApp, getApps, getApp } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  getDocs,
+  where,
+  collectionGroup,
+} from "firebase/firestore";
 
-// export const createChat = async (user1Id, user2Id, messageText) => {
-//   try {
-//     const chatId = [user1Id, user2Id].sort().join("_");
-//     console.log("Creating/updating chat:", chatId);
+const getMessages = (chatId, setMessages) => {
+  const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
+  const q = query(messagesRef, orderBy("timestamp", "asc"));
+  const unsubscribe = onSnapshot(
+    q,
+    (querySnapshot) => {
+      const messages = [];
 
-//     const chatRef = doc(FIREBASE_DB, "chats", chatId);
-//     const chatSnap = await getDoc(chatRef);
+      querySnapshot.forEach((doc) => {
+        messages.push({ id: doc.id, ...doc.data() });
+      });
+      console.log("Messages fetched:", messages); // Debug log
+      setMessages(messages);
+    },
+    (error) => {
+      console.error("Error fetching messages: ", error); // Log error
+    }
+  );
+  return unsubscribe; // Return unsubscribe to clean up listener
+};
 
-//     if (!chatSnap.exists()) {
-//       // Create chat document if it does not exist
-//       await setDoc(chatRef, {
-//         users: [user1Id, user2Id],
-//         messages: [],
-//       });
-//     }
+// Function to send a new message
+const sendMessage = async (chatId, messageText, userId, userEmail) => {
+  try {
+    const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
+    await addDoc(messagesRef, {
+      senderId: userId,
+      senderEmail: userEmail,
+      text: messageText,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error("Error sending message: ", error);
+    throw error;
+  }
+};
 
-//     // Add message to the messages array inside the chat document
-//     await updateDoc(chatRef, {
-//       messages: arrayUnion({
-//         senderId: user1Id,
-//         text: messageText,
-//         timestamp: serverTimestamp(),
-//       }),
-//     });
+const getAssociatedUsers = async (currentUserId) => {
+  try {
+    console.log("Fetching chat users for:", currentUserId);
 
-//     console.log("✅ Message sent successfully");
-//     return true;
-//   } catch (error) {
-//     console.error("❌ Error in createChat:", error);
-//     throw error;
-//   }
-// };
+    // Query all messages subcollections
+    const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
+
+    // Query docs where the current user is the sender
+    const sentQuery = query(
+      messagesGroupRef,
+      where("senderId", "==", currentUserId)
+    );
+
+    const sentSnapshot = await getDocs(sentQuery);
+
+    let chatPartners = new Set();
+
+    sentSnapshot.forEach((doc) => {
+      const data = doc.data();
+
+      // Extract receiverId from the nested text object
+      if (data.text && typeof data.text === "object" && data.text.receiverId) {
+        const receiverId = data.text.receiverId;
+
+        if (receiverId && receiverId !== currentUserId) {
+          console.log("Sent message to:", receiverId);
+          chatPartners.add(receiverId);
+        }
+      }
+    });
+
+    console.log("Final chat users list:", [...chatPartners]);
+    return [...chatPartners];
+  } catch (error) {
+    console.error("Error fetching associated users:", error);
+    throw error;
+  }
+};
+
+export { getMessages, sendMessage, getAssociatedUsers };
