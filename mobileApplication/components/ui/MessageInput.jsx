@@ -1,38 +1,42 @@
-// /src/components/MessageInput.js
 import React, { useState } from "react";
+import { TextInput, Button, StyleSheet, View } from "react-native";
 
 const MessageInput = ({ onSendMessage }) => {
-  const [message, setMessage] = useState("");
+  const [messageText, setMessageText] = useState("");
 
   const handleSendMessage = () => {
-    if (message.trim()) {
-      onSendMessage(message);
-      setMessage("");
+    if (messageText.trim()) {
+      onSendMessage(messageText);
+      setMessageText("");
     }
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center" }}>
-      <input
-        type="text"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type a message..."
-        style={{
-          padding: "10px",
-          flex: 1,
-          marginRight: "10px",
-          borderRadius: "5px",
-        }}
+    <View style={styles.inputContainer}>
+      <TextInput
+        style={styles.input}
+        value={messageText}
+        onChangeText={setMessageText}
+        placeholder="Type a message"
       />
-      <button
-        onClick={handleSendMessage}
-        style={{ padding: "10px", borderRadius: "5px" }}
-      >
-        Send
-      </button>
-    </div>
+      <Button title="Send" onPress={handleSendMessage} />
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  inputContainer: {
+    flexDirection: "row",
+    padding: 10,
+    alignItems: "center",
+  },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    padding: 10,
+  },
+});
 
 export default MessageInput;

@@ -8,13 +8,13 @@ import {
 } from "react-native";
 import { useRoute } from "@react-navigation/native";
 import useChat from "../../hooks/useChat";
-import MessageInput from "../(pages)/MessageInput";
+import MessageInput from "../../components/ui/MessageInput";
 import { getAuth } from "firebase/auth";
-import ApiHandler from "../../api/ApiHandler"; // Import ApiHandler
+import ApiHandler from "../../api/ApiHandler";
 
 const Chat = () => {
   const route = useRoute();
-  const { landlordId, landlordName, renterName } = route.params; // Added renterName
+  const { landlordId, landlordName, renterName } = route.params;
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [landlordFirebaseId, setLandlordFirebaseId] = useState(null);
