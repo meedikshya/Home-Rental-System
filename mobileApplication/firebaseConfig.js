@@ -7,6 +7,10 @@ import {
   query,
   orderBy,
   onSnapshot,
+  getDocs,
+  where,
+  collectionGroup,
+  serverTimestamp,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -44,6 +48,7 @@ const getMessages = (chatId, setMessages) => {
     q,
     (querySnapshot) => {
       const messages = [];
+
       querySnapshot.forEach((doc) => {
         messages.push({ id: doc.id, ...doc.data() });
       });
@@ -73,4 +78,50 @@ const sendMessage = async (chatId, messageText, userId, userEmail) => {
   }
 };
 
-export { FIREBASE_APP, FIREBASE_AUTH, FIREBASE_DB, getMessages, sendMessage };
+const getAssociatedUsers = async (currentUserId) => {
+  try {
+    console.log("Fetching chat users for:", currentUserId);
+
+    // Query all messages subcollections
+    const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
+
+    // Query docs where the current user is the sender
+    const sentQuery = query(
+      messagesGroupRef,
+      where("senderId", "==", currentUserId)
+    );
+
+    const sentSnapshot = await getDocs(sentQuery);
+
+    let chatPartners = new Set();
+
+    sentSnapshot.forEach((doc) => {
+      const data = doc.data();
+
+      // Extract receiverId from the nested text object
+      if (data.text && typeof data.text === "object" && data.text.receiverId) {
+        const receiverId = data.text.receiverId;
+
+        if (receiverId && receiverId !== currentUserId) {
+          console.log("Sent message to:", receiverId);
+          chatPartners.add(receiverId);
+        }
+      }
+    });
+
+    console.log("Final chat users list:", [...chatPartners]);
+    return [...chatPartners];
+  } catch (error) {
+    console.error("Error fetching associated users:", error);
+    throw error;
+  }
+};
+
+export {
+  FIREBASE_APP,
+  FIREBASE_AUTH,
+  FIREBASE_DB,
+  getMessages,
+  sendMessage,
+  getAssociatedUsers,
+};

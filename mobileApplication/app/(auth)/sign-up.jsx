@@ -12,7 +12,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { FIREBASE_AUTH } from "../../firebaseConfig";
+import { FIREBASE_AUTH, FIREBASE_DB } from "../../firebaseConfig"; // Firebase config import
+import { doc, setDoc } from "firebase/firestore"; // Import Firestore functions
 import ApiHandler from "../../api/ApiHandler";
 
 const SignUp = () => {
@@ -44,11 +45,19 @@ const SignUp = () => {
 
       const firebaseUserId = userCredential.user.uid; // Get the Firebase user ID
 
+      // Save user information in Firestore
+      await setDoc(doc(FIREBASE_DB, "users", firebaseUserId), {
+        email: form.email,
+        userRole: "Renter", // Default role, you can make this dynamic
+        firebaseUId: firebaseUserId,
+      });
+
+      // Send additional user data to your backend API
       const response = await ApiHandler.post("/Users", {
         email: form.email,
-        passwordHash: form.password,
-        userRole: "Renter", // Default role, can be dynamic based on your needs
-        firebaseUId: firebaseUserId, // Store the Firebase user ID in your database
+        passwordHash: form.password, // Optional: Consider hashing the password before sending
+        userRole: "Renter", // Default role
+        firebaseUId: firebaseUserId, // Store Firebase UID in your database
       });
 
       if (response && response.userId) {
@@ -61,8 +70,8 @@ const SignUp = () => {
         throw new Error("Unexpected API response format.");
       }
     } catch (error) {
-      console.error("API Error:", error);
-      const errorMessage = error.response?.data?.message || error.message;
+      console.error("Error:", error);
+      const errorMessage = error.message || "An error occurred";
       Alert.alert("Error", errorMessage);
     } finally {
       setSubmitting(false);
@@ -89,7 +98,7 @@ const SignUp = () => {
                 keyboardType="email-address"
                 className="text-black"
                 placeholder="Enter your email"
-                placeholderTextColor="#888" // Ensure placeholder text color is set
+                placeholderTextColor="#888"
               />
             </View>
           </View>
@@ -103,7 +112,7 @@ const SignUp = () => {
                 secureTextEntry
                 className="text-black"
                 placeholder="Enter your password"
-                placeholderTextColor="#888" // Ensure placeholder text color is set
+                placeholderTextColor="#888"
               />
             </View>
           </View>

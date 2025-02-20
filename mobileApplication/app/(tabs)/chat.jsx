@@ -10,11 +10,11 @@ import { useRoute } from "@react-navigation/native";
 import useChat from "../../hooks/useChat";
 import MessageInput from "../(pages)/MessageInput";
 import { getAuth } from "firebase/auth";
-import ApiHandler from "../../api/ApiHandler";
+import ApiHandler from "../../api/ApiHandler"; // Import ApiHandler
 
 const Chat = () => {
   const route = useRoute();
-  const { landlordId, landlordName, renterName } = route.params;
+  const { landlordId, landlordName, renterName } = route.params; // Added renterName
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [landlordFirebaseId, setLandlordFirebaseId] = useState(null);
@@ -66,9 +66,9 @@ const Chat = () => {
         console.log("Landlord Firebase ID Response:", response);
 
         if (response) {
-          const firebaseId = response;
+          const firebaseId = response; // Treat response.data as a plain string
           console.log("Landlord Firebase ID retrieved:", firebaseId);
-          setLandlordFirebaseId(firebaseId);
+          setLandlordFirebaseId(firebaseId); // Set the landlord's Firebase ID
         } else {
           console.log("No landlord Firebase ID returned from the API.");
         }
