@@ -4,34 +4,39 @@ import { LoginForm } from "./pages/Login/LoginForm.js";
 import { RegisterForm } from "./pages/Signup/RegisterForm.js";
 import AdminPanel from "./pages/Admin/AdminPanel.js";
 import WelcomePage from "./pages/Home/WelcomePage.js";
-import { auth } from "./services/Firebase-config.js";
+import UserInfo from "./pages/Signup/UserInfo.js";
+import Main from "./pages/Main/index.jsx";
+import Layout from "./components/Landlord/Layout.js";
+import Property from "./pages/Landlord/Property.js";
+import Home from "./pages/Landlord/Home.js";
+import Booking from "./pages/Landlord/Booking.js";
+import Chat from "./pages/Landlord/Chat.js";
+import Payment from "./pages/Landlord/Payment.js";
+import AddPropertyDetails from "./components/property/PropertyDetailsForm.js";
+import AddPropertyForm from "./components/property/AddPropertyForm.js";
+import UploadPropertyImages from "./components/property/PropertyImageUpload.js";
+
+import { FIREBASE_AUTH } from "./services/Firebase-config.js";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+} from "firebase/auth";
+
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useSessionTimeout } from "./hooks/userSessionTimeout.js";
 
 function App() {
-  const [registerEmail, setRegisterEmail] = useState("");
-  const [registerPassword, setRegisterPassword] = useState("");
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Fetch user details from local storage
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-
-    // Handle auth state change
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+    const unsubscribe = onAuthStateChanged(FIREBASE_AUTH, (currentUser) => {
       if (currentUser) {
-        // Optionally fetch more user details from your backend
-        // For now, just set the user from local storage
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        }
+        setUser({ email: currentUser.email });
+        localStorage.setItem(
+          "user",
+          JSON.stringify({ email: currentUser.email })
+        );
       } else {
         setUser(null);
         localStorage.removeItem("user");
@@ -41,14 +46,14 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  const register = async () => {
+  const register = async (email, password) => {
     try {
-      const userCredential = await auth.createUserWithEmailAndPassword(
-        registerEmail,
-        registerPassword
+      const userCredential = await createUserWithEmailAndPassword(
+        FIREBASE_AUTH,
+        email,
+        password
       );
       const userData = { email: userCredential.user.email };
-      // Save user details to local storage
       localStorage.setItem("user", JSON.stringify(userData));
       toast.success("Registration successful!");
       setUser(userData);
@@ -57,14 +62,14 @@ function App() {
     }
   };
 
-  const login = async () => {
+  const login = async (email, password) => {
     try {
-      const userCredential = await auth.signInWithEmailAndPassword(
-        loginEmail,
-        loginPassword
+      const userCredential = await signInWithEmailAndPassword(
+        FIREBASE_AUTH,
+        email,
+        password
       );
       const userData = { email: userCredential.user.email };
-      // Save user details to local storage
       localStorage.setItem("user", JSON.stringify(userData));
       toast.success("Login successful!");
       setUser(userData);
@@ -73,56 +78,40 @@ function App() {
     }
   };
 
-  const logout = async () => {
-    try {
-      await auth.signOut();
-      setUser(null);
-      localStorage.removeItem("user");
-      localStorage.removeItem("JWTToken");
-      toast.success("Logged out successfully!");
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
   return (
     <BrowserRouter>
-      <div className="flex w-full h-screen">
-        <div className="w-full flex items-center justify-center lg:w-1.5/2">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <LoginForm
-                  loginEmail={loginEmail}
-                  loginPassword={loginPassword}
-                  setLoginEmail={setLoginEmail}
-                  setLoginPassword={setLoginPassword}
-                  login={login}
+      <Routes>
+        <Route path="/login" element={<LoginForm login={login} />} />
+        <Route
+          path="/register"
+          element={<RegisterForm register={register} />}
+        />
+        <Route path="/home" element={<WelcomePage user={user} />} />
+        <Route path="/adminpanel" element={<AdminPanel />} />
+        <Route path="/userinfo/:userId" element={<UserInfo />} />
+        <Route path="/main" element={<Main />} />
+        <Route
+          path="/landlord/*"
+          element={
+            <Layout>
+              <Routes>
+                <Route path="property" element={<Property />} />
+                <Route path="booking" element={<Booking />} />
+                <Route path="chat" element={<Chat />} />
+                <Route path="payment" element={<Payment />} />
+                <Route path="home" element={<Home />} />
+                <Route path="addproperty" element={<AddPropertyForm />} />
+                <Route path="/add-property" element={<AddPropertyDetails />} />
+                <Route
+                  path="upload-images/:propertyId"
+                  element={<UploadPropertyImages />}
                 />
-              }
-            />
-            <Route
-              path="/register"
-              element={
-                <RegisterForm
-                  registerEmail={registerEmail}
-                  registerPassword={registerPassword}
-                  setRegisterEmail={setRegisterEmail}
-                  setRegisterPassword={setRegisterPassword}
-                  register={register}
-                />
-              }
-            />
-            <Route
-              path="/home"
-              element={<WelcomePage user={user} logout={logout} />}
-            />
-            <Route path="/adminpanel" element={<AdminPanel />} />
-          </Routes>
-          <ToastContainer />
-        </div>
-      </div>
+              </Routes>
+            </Layout>
+          }
+        />
+      </Routes>
+      <ToastContainer />
     </BrowserRouter>
   );
 }

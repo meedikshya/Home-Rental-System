@@ -56,6 +56,6 @@ export const getUserDataFromFirebaseId = async (firebaseId) => {
     }
   } catch (error) {
     console.error("Error fetching user data:", error);
-    return null; // Return null in case of an error
+    return null; // Return null in case of an errorrs
   }
 };
