@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { getMessages, sendMessage } from "../../firebaseConfig";
+import {
+  FIREBASE_AUTH,
+  getMessages,
+  sendMessage,
+} from "../services/Firebase-config.js";
 
 const useChat = (chatId) => {
   const [messages, setMessages] = useState([]);
@@ -8,13 +11,15 @@ const useChat = (chatId) => {
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
 
+  // Authentication effect
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    console.log("Setting up auth listener in useChat");
+    const unsubscribe = FIREBASE_AUTH.onAuthStateChanged((currentUser) => {
       if (currentUser) {
+        console.log("User authenticated in useChat:", currentUser.email);
         setUser(currentUser);
-        setError(null);
       } else {
+        console.log("No authenticated user in useChat");
         setError("User not logged in");
         setLoading(false);
       }
@@ -23,25 +28,85 @@ const useChat = (chatId) => {
     return () => unsubscribe();
   }, []);
 
+  // Message subscription effect - only runs when we have both user and chatId
   useEffect(() => {
-    if (user) {
-      const unsubscribe = getMessages(chatId, setMessages);
+    if (!user) {
+      console.log("No authenticated user yet, not setting up chat listener");
+      return;
+    }
+
+    if (!chatId) {
+      console.log("No chat ID yet, not setting up chat listener");
       setLoading(false);
-      return () => unsubscribe();
+      return;
+    }
+
+    console.log(`Setting up message listener for chat: ${chatId}`);
+    try {
+      const unsubscribe = getMessages(chatId, (fetchedMessages) => {
+        console.log(
+          `Received ${fetchedMessages.length} messages for ${chatId}`
+        );
+        setMessages(fetchedMessages || []);
+        setLoading(false);
+      });
+
+      // Clean up subscription when component unmounts or chatId/user changes
+      return () => {
+        console.log(`Cleaning up message listener for chat: ${chatId}`);
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      };
+    } catch (err) {
+      console.error("Error setting up message subscription:", err);
+      setError(`Failed to load messages: ${err.message}`);
+      setLoading(false);
     }
   }, [chatId, user]);
 
-  const sendNewMessage = async (messageText) => {
+  // Send message function
+  const sendNewMessage = async (messageData) => {
     if (!user) {
+      console.error("Cannot send message: User not authenticated");
       setError("User is not logged in");
       return;
     }
 
+    if (!chatId) {
+      console.error("Cannot send message: Chat ID not available");
+      setError("Chat ID is not available");
+      return;
+    }
+
     try {
-      await sendMessage(chatId, messageText, user.uid, user.email);
-      setError(null); // Clear any previous errors on successful send
+      console.log("Sending message:", {
+        chatId,
+        messageData,
+      });
+
+      // If messageData is an object with text property
+      if (typeof messageData === "object" && messageData.text) {
+        const messageId = await sendMessage(
+          chatId,
+          messageData.text,
+          messageData.senderId || user.uid,
+          messageData.receiverId
+        );
+        console.log("Message sent with ID:", messageId);
+      } else {
+        // If messageData is just a text string
+        const messageId = await sendMessage(
+          chatId,
+          messageData,
+          user.uid,
+          user.email
+        );
+        console.log("Message sent with ID:", messageId);
+      }
     } catch (err) {
-      setError("Error sending message");
+      console.error("Error sending message:", err);
+      setError(`Failed to send message: ${err.message}`);
     }
   };
 

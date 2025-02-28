@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import imageCompression from "browser-image-compression";
 import ApiHandler from "../../api/ApiHandler.js";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
 import { FaImages, FaUpload, FaTrash, FaCheck } from "react-icons/fa";
@@ -17,10 +18,9 @@ const PropertyImageUpload = ({ propertyId }) => {
   };
 
   const addValidImages = (files) => {
-    const validImageFiles = files.filter(
-      (file) => file && file.type.startsWith("image/")
+    const validImageFiles = files.filter((file) =>
+      file.type.startsWith("image/")
     );
-
     if (validImageFiles.length === 0) {
       toast.error("Please select valid image files.");
       return;
@@ -63,36 +63,86 @@ const PropertyImageUpload = ({ propertyId }) => {
     setImages((prevImages) => prevImages.filter((_, i) => i !== index));
   };
 
+  // IMPROVED: Function to compress and upload an image with better base64 handling
   const uploadImage = async (image) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(image);
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Get image format - this will help ensure proper base64 markers
+        const imageFormat = image.type.split("/")[1];
+        console.log(`Image format: ${imageFormat}`);
 
-      reader.onload = async () => {
-        try {
-          const base64Image = reader.result.split(",")[1];
-          const imageData = {
-            propertyId: parseInt(propertyId),
-            imageUrl: base64Image,
-          };
+        // Compression Options
+        const options = {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 800,
+          useWebWorker: true,
+        };
 
-          const token = await FIREBASE_AUTH.currentUser.getIdToken();
-          const response = await ApiHandler.post("/PropertyImages", imageData, {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          });
+        const compressedFile = await imageCompression(image, options);
 
-          resolve(response);
-        } catch (error) {
+        // Convert compressed image to Base64
+        const reader = new FileReader();
+        reader.readAsDataURL(compressedFile);
+
+        reader.onload = async () => {
+          try {
+            // Get the full base64 data URL
+            const fullDataUrl = reader.result;
+
+            // Extract just the base64 portion (without the data:image/xxx;base64, prefix)
+            const base64Image = fullDataUrl.split(",")[1];
+
+            // Add a format marker at the beginning for easier identification later
+            let formattedBase64;
+
+            if (imageFormat === "jpeg" || imageFormat === "jpg") {
+              // Add JPEG file marker - ensures correct identification
+              formattedBase64 = base64Image;
+              console.log("Uploading JPEG image");
+            } else if (imageFormat === "png") {
+              // Add PNG file marker - ensures correct identification
+              formattedBase64 = base64Image;
+              console.log("Uploading PNG image");
+            } else {
+              // Default to standard base64
+              formattedBase64 = base64Image;
+              console.log(`Uploading ${imageFormat} image`);
+            }
+
+            const imageData = {
+              propertyId: parseInt(propertyId),
+              imageUrl: fullDataUrl,
+              imageFormat: imageFormat, // Store format for reference
+            };
+
+            const token = await FIREBASE_AUTH.currentUser.getIdToken();
+            const response = await ApiHandler.post(
+              "/PropertyImages",
+              imageData,
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+
+            console.log("Image upload successful:", response);
+            resolve(response);
+          } catch (error) {
+            console.error("Upload processing error:", error);
+            reject(error);
+          }
+        };
+
+        reader.onerror = (error) => {
+          console.error("FileReader error:", error);
           reject(error);
-        }
-      };
-
-      reader.onerror = (error) => {
+        };
+      } catch (error) {
+        console.error("Image compression error:", error);
         reject(error);
-      };
+      }
     });
   };
 
@@ -221,10 +271,12 @@ const PropertyImageUpload = ({ propertyId }) => {
                     alt={`Preview ${index + 1}`}
                     className="w-full h-48 object-cover rounded-lg shadow-md"
                   />
+                  <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs rounded px-2 py-1">
+                    Format: {image.type.split("/")[1]}
+                  </div>
                   <button
-                    type="button"
                     onClick={() => handleRemoveImage(index)}
-                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors duration-300"
+                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"
                   >
                     <FaTrash />
                   </button>
@@ -236,51 +288,12 @@ const PropertyImageUpload = ({ propertyId }) => {
 
         <button
           type="submit"
-          disabled={uploading || images.length === 0}
-          className={`w-full py-3 px-6 ${
-            uploading || images.length === 0
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-blue-500 hover:bg-blue-600"
-          } text-white rounded-lg transition duration-300 flex items-center justify-center`}
+          className="bg-blue-500 text-white px-6 py-2 rounded-lg flex items-center"
+          disabled={uploading}
         >
-          {uploading ? (
-            <>
-              <svg
-                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Uploading...
-            </>
-          ) : (
-            <>
-              <FaUpload className="mr-2" />
-              Upload Images
-            </>
-          )}
+          <FaCheck className="mr-2" />
+          {uploading ? "Uploading..." : "Upload Images"}
         </button>
-
-        {images.length > 0 && (
-          <div className="text-gray-500 text-center text-sm">
-            {images.length} {images.length === 1 ? "image" : "images"} selected
-            for upload
-          </div>
-        )}
       </form>
     </div>
   );
