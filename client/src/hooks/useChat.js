@@ -1,23 +1,49 @@
 import { useState, useEffect } from "react";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
-  FIREBASE_AUTH,
   getMessages,
   sendMessage,
+  FIREBASE_DB,
 } from "../services/Firebase-config.js";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  collectionGroup,
+} from "firebase/firestore";
 
-const useChat = (chatId) => {
+const useChat = (
+  chatId,
+  currentFirebaseId = null,
+  partnerFirebaseId = null
+) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
+  const [messagesFetched, setMessagesFetched] = useState(false);
+
+  // Debug information
+  useEffect(() => {
+    console.log("useChat params:", {
+      chatId,
+      currentFirebaseId,
+      partnerFirebaseId,
+      messagesFetched,
+      messagesCount: messages.length,
+    });
+  }, [chatId, currentFirebaseId, partnerFirebaseId, messagesFetched, messages]);
 
   // Authentication effect
   useEffect(() => {
-    console.log("Setting up auth listener in useChat");
-    const unsubscribe = FIREBASE_AUTH.onAuthStateChanged((currentUser) => {
+    console.log("Setting up auth listener");
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         console.log("User authenticated in useChat:", currentUser.email);
         setUser(currentUser);
+        setError(null);
       } else {
         console.log("No authenticated user in useChat");
         setError("User not logged in");
@@ -28,42 +54,128 @@ const useChat = (chatId) => {
     return () => unsubscribe();
   }, []);
 
-  // Message subscription effect - only runs when we have both user and chatId
+  // Primary message fetching effect
   useEffect(() => {
-    if (!user) {
-      console.log("No authenticated user yet, not setting up chat listener");
+    if (!user || !chatId) {
+      console.log("Missing user or chatId, not fetching messages");
       return;
     }
 
-    if (!chatId) {
-      console.log("No chat ID yet, not setting up chat listener");
-      setLoading(false);
-      return;
-    }
+    console.log("Setting up message listener for chat:", chatId);
+    let unsubscribe;
 
-    console.log(`Setting up message listener for chat: ${chatId}`);
     try {
-      const unsubscribe = getMessages(chatId, (fetchedMessages) => {
+      unsubscribe = getMessages(chatId, (fetchedMessages) => {
         console.log(
-          `Received ${fetchedMessages.length} messages for ${chatId}`
+          `Got ${fetchedMessages.length} messages for chat ${chatId}`
         );
-        setMessages(fetchedMessages || []);
+        setMessages(fetchedMessages);
         setLoading(false);
-      });
+        setMessagesFetched(true);
 
-      // Clean up subscription when component unmounts or chatId/user changes
-      return () => {
-        console.log(`Cleaning up message listener for chat: ${chatId}`);
-        if (typeof unsubscribe === "function") {
-          unsubscribe();
+        // If we didn't get any messages, try searching by current user's Firebase ID
+        if (fetchedMessages.length === 0 && currentFirebaseId) {
+          console.log(
+            "No messages found with chatId, searching by Firebase ID"
+          );
+          searchMessagesByFirebaseId();
         }
-      };
+      });
     } catch (err) {
-      console.error("Error setting up message subscription:", err);
-      setError(`Failed to load messages: ${err.message}`);
+      console.error("Error setting up message listener:", err);
+      setError("Failed to set up message listener");
+      setLoading(false);
+
+      // Try searching by Firebase ID as fallback
+      if (currentFirebaseId) {
+        searchMessagesByFirebaseId();
+      }
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [chatId, user, currentFirebaseId]);
+
+  const searchMessagesByFirebaseId = async () => {
+    if (!currentFirebaseId) {
+      console.log("No Firebase ID to search with");
+      return;
+    }
+
+    console.log(
+      "Searching messages where current user is receiver:",
+      currentFirebaseId
+    );
+    setLoading(true);
+
+    try {
+      const messagesRef = collectionGroup(FIREBASE_DB, "messages");
+      let foundMessages = [];
+
+      // Try finding messages where user is sender first
+      try {
+        const senderQuery = query(
+          messagesRef,
+          where("senderId", "==", currentFirebaseId)
+        );
+
+        const senderSnapshot = await getDocs(senderQuery);
+
+        senderSnapshot.forEach((doc) => {
+          foundMessages.push({
+            id: doc.id,
+            ...doc.data(),
+          });
+        });
+
+        console.log(
+          `Found ${senderSnapshot.size} messages where user is sender`
+        );
+      } catch (err) {
+        console.warn("Error searching sender messages:", err.message);
+      }
+
+      // Then try finding messages where user is receiver (nested in text object)
+      try {
+        const receiverQuery = query(
+          messagesRef,
+          where("text.receiverId", "==", currentFirebaseId)
+        );
+
+        const receiverSnapshot = await getDocs(receiverQuery);
+
+        receiverSnapshot.forEach((doc) => {
+          foundMessages.push({
+            id: doc.id,
+            ...doc.data(),
+          });
+        });
+
+        console.log(
+          `Found ${receiverSnapshot.size} messages where user is nested receiver`
+        );
+      } catch (err) {
+        console.warn(
+          "Error searching nested receiver messages (index required):",
+          err.message
+        );
+        console.warn(
+          "To fix this permanently, create the index using Firebase console"
+        );
+      }
+
+      // Update state if we found messages
+      if (foundMessages.length > 0) {
+        setMessages(foundMessages);
+        setMessagesFetched(true);
+      }
+    } catch (err) {
+      console.error("Error in message search fallback:", err);
+    } finally {
       setLoading(false);
     }
-  }, [chatId, user]);
+  };
 
   // Send message function
   const sendNewMessage = async (messageData) => {
@@ -80,33 +192,11 @@ const useChat = (chatId) => {
     }
 
     try {
-      console.log("Sending message:", {
-        chatId,
-        messageData,
-      });
-
-      // If messageData is an object with text property
-      if (typeof messageData === "object" && messageData.text) {
-        const messageId = await sendMessage(
-          chatId,
-          messageData.text,
-          messageData.senderId || user.uid,
-          messageData.receiverId
-        );
-        console.log("Message sent with ID:", messageId);
-      } else {
-        // If messageData is just a text string
-        const messageId = await sendMessage(
-          chatId,
-          messageData,
-          user.uid,
-          user.email
-        );
-        console.log("Message sent with ID:", messageId);
-      }
+      console.log("Sending message with:", { chatId, messageData });
+      await sendMessage(chatId, messageData, user.uid, user.email);
     } catch (err) {
       console.error("Error sending message:", err);
-      setError(`Failed to send message: ${err.message}`);
+      setError("Error sending message");
     }
   };
 

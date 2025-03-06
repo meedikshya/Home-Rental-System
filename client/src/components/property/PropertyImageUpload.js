@@ -25,11 +25,9 @@ const PropertyImageUpload = ({ propertyId }) => {
       toast.error("Please select valid image files.");
       return;
     }
-
     if (files.length !== validImageFiles.length) {
       toast.warning("Some files were skipped because they weren't images.");
     }
-
     setImages((prevImages) => [...prevImages, ...validImageFiles]);
   };
 
@@ -54,7 +52,6 @@ const PropertyImageUpload = ({ propertyId }) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-
     const files = Array.from(e.dataTransfer.files);
     addValidImages(files);
   };
@@ -63,62 +60,29 @@ const PropertyImageUpload = ({ propertyId }) => {
     setImages((prevImages) => prevImages.filter((_, i) => i !== index));
   };
 
-  // IMPROVED: Function to compress and upload an image with better base64 handling
   const uploadImage = async (image) => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        // Get image format - this will help ensure proper base64 markers
-        const imageFormat = image.type.split("/")[1];
-        console.log(`Image format: ${imageFormat}`);
-
-        // Compression Options
-        const options = {
-          maxSizeMB: 0.5,
-          maxWidthOrHeight: 800,
-          useWebWorker: true,
-        };
-
-        const compressedFile = await imageCompression(image, options);
-
-        // Convert compressed image to Base64
-        const reader = new FileReader();
-        reader.readAsDataURL(compressedFile);
-
+    try {
+      const options = {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      };
+      const compressedFile = await imageCompression(image, options);
+      const reader = new FileReader();
+      reader.readAsDataURL(compressedFile);
+      return new Promise((resolve, reject) => {
         reader.onload = async () => {
           try {
-            // Get the full base64 data URL
             const fullDataUrl = reader.result;
-
-            // Extract just the base64 portion (without the data:image/xxx;base64, prefix)
-            const base64Image = fullDataUrl.split(",")[1];
-
-            // Add a format marker at the beginning for easier identification later
-            let formattedBase64;
-
-            if (imageFormat === "jpeg" || imageFormat === "jpg") {
-              // Add JPEG file marker - ensures correct identification
-              formattedBase64 = base64Image;
-              console.log("Uploading JPEG image");
-            } else if (imageFormat === "png") {
-              // Add PNG file marker - ensures correct identification
-              formattedBase64 = base64Image;
-              console.log("Uploading PNG image");
-            } else {
-              // Default to standard base64
-              formattedBase64 = base64Image;
-              console.log(`Uploading ${imageFormat} image`);
-            }
-
-            const imageData = {
-              propertyId: parseInt(propertyId),
-              imageUrl: fullDataUrl,
-              imageFormat: imageFormat, // Store format for reference
-            };
-
+            const imageFormat = image.type.split("/")[1];
             const token = await FIREBASE_AUTH.currentUser.getIdToken();
             const response = await ApiHandler.post(
               "/PropertyImages",
-              imageData,
+              {
+                propertyId: parseInt(propertyId),
+                imageUrl: fullDataUrl,
+                imageFormat,
+              },
               {
                 headers: {
                   "Content-Type": "application/json",
@@ -126,70 +90,47 @@ const PropertyImageUpload = ({ propertyId }) => {
                 },
               }
             );
-
-            console.log("Image upload successful:", response);
             resolve(response);
           } catch (error) {
-            console.error("Upload processing error:", error);
             reject(error);
           }
         };
-
-        reader.onerror = (error) => {
-          console.error("FileReader error:", error);
-          reject(error);
-        };
-      } catch (error) {
-        console.error("Image compression error:", error);
-        reject(error);
-      }
-    });
+        reader.onerror = (error) => reject(error);
+      });
+    } catch (error) {
+      throw new Error("Image compression failed");
+    }
   };
 
   const handleSubmitImages = async (e) => {
     e.preventDefault();
-
     if (images.length === 0) {
       toast.error("Please select at least one image.");
       return;
     }
-
     if (!propertyId) {
       toast.error("Property ID is missing.");
       return;
     }
-
     setUploading(true);
-
     try {
-      let successCount = 0;
-      let failCount = 0;
-
-      // Show progress toast
+      let successCount = 0,
+        failCount = 0;
       const progressToast = toast.info(`Uploading images: 0/${images.length}`, {
         autoClose: false,
       });
-
-      // Upload each image
       for (let i = 0; i < images.length; i++) {
         try {
           await uploadImage(images[i]);
           successCount++;
-
-          // Update progress toast
           toast.update(progressToast, {
             render: `Uploading images: ${i + 1}/${images.length}`,
           });
         } catch (error) {
-          console.error(`Error uploading image ${i + 1}:`, error);
           failCount++;
         }
       }
-
-      // Close progress toast
       toast.dismiss(progressToast);
-
-      // Show final result toast
       if (successCount > 0) {
         toast.success(
           `Successfully uploaded ${successCount} image${
@@ -197,19 +138,14 @@ const PropertyImageUpload = ({ propertyId }) => {
           }.`
         );
         setImages([]);
-
-        if (failCount === 0) {
-          navigate("/dashboard/property");
-        }
+        if (failCount === 0) navigate("/dashboard/property");
       }
-
       if (failCount > 0) {
         toast.error(
           `Failed to upload ${failCount} image${failCount !== 1 ? "s" : ""}.`
         );
       }
     } catch (error) {
-      console.error("Image upload error:", error);
       toast.error("Failed to upload images. Please try again.");
     } finally {
       setUploading(false);
@@ -219,10 +155,8 @@ const PropertyImageUpload = ({ propertyId }) => {
   return (
     <div className="bg-white rounded-lg">
       <h2 className="text-2xl font-bold mb-6 text-blue-600 flex items-center">
-        <FaImages className="mr-2" />
-        Upload Property Images
+        <FaImages className="mr-2" /> Upload Property Images
       </h2>
-
       <form onSubmit={handleSubmitImages} className="space-y-6">
         <div
           className={`border-2 border-dashed ${
@@ -248,21 +182,11 @@ const PropertyImageUpload = ({ propertyId }) => {
             />
           </label>
         </div>
-
         {images.length > 0 && (
           <div className="mt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-blue-500">
-                Preview ({images.length} images)
-              </h3>
-              <button
-                type="button"
-                onClick={() => setImages([])}
-                className="text-red-500 hover:text-red-700"
-              >
-                Remove All
-              </button>
-            </div>
+            <h3 className="text-lg font-semibold text-blue-500">
+              Preview ({images.length} images)
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {images.map((image, index) => (
                 <div key={index} className="relative">
@@ -271,9 +195,6 @@ const PropertyImageUpload = ({ propertyId }) => {
                     alt={`Preview ${index + 1}`}
                     className="w-full h-48 object-cover rounded-lg shadow-md"
                   />
-                  <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs rounded px-2 py-1">
-                    Format: {image.type.split("/")[1]}
-                  </div>
                   <button
                     onClick={() => handleRemoveImage(index)}
                     className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"
@@ -285,13 +206,12 @@ const PropertyImageUpload = ({ propertyId }) => {
             </div>
           </div>
         )}
-
         <button
           type="submit"
           className="bg-blue-500 text-white px-6 py-2 rounded-lg flex items-center"
           disabled={uploading}
         >
-          <FaCheck className="mr-2" />
+          <FaCheck className="mr-2" />{" "}
           {uploading ? "Uploading..." : "Upload Images"}
         </button>
       </form>

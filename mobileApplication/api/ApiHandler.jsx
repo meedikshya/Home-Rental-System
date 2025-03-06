@@ -4,7 +4,7 @@ import { REACT_APP_BASE_URL } from "@env";
 
 const BASE_URL = REACT_APP_BASE_URL;
 class ApiHandler {
-  constructor(baseURL = BASE_URL) {
+  constructor(baseURL = "http://100.64.207.211:8000/api") {
     this.api = axios.create({
       baseURL,
       headers: {

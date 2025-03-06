@@ -11,6 +11,7 @@ import Property from "./pages/Landlord/Property.js";
 import Home from "./pages/Landlord/Home.js";
 import Booking from "./pages/Landlord/Booking.js";
 import Chat from "./pages/Landlord/Chat.js";
+import ChatPage from "./pages/Landlord/ChatPage.js";
 import Payment from "./pages/Landlord/Payment.js";
 import AddPropertyDetails from "./components/property/PropertyDetailsForm.js";
 import AddPropertyForm from "./components/property/AddPropertyForm.js";
@@ -98,6 +99,7 @@ function App() {
                 <Route path="property" element={<Property />} />
                 <Route path="booking" element={<Booking />} />
                 <Route path="chat" element={<Chat />} />
+                <Route path="chat/:chatId" element={<ChatPage />} />
                 <Route path="payment" element={<Payment />} />
                 <Route path="home" element={<Home />} />
                 <Route path="addproperty" element={<AddPropertyForm />} />

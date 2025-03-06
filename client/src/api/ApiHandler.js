@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const BASE_URL = process.env.REACT_APP_BASE_URL;
+const BASE_URL = "http://192.168.1.70:8000/api";
 
 class ApiHandler {
   constructor(baseURL = BASE_URL) {

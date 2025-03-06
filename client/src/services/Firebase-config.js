@@ -1,4 +1,5 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+// src/firebaseConfig.js
+import { initializeApp } from "firebase/app";
 import {
   getFirestore,
   collection,
@@ -11,13 +12,9 @@ import {
   collectionGroup,
   serverTimestamp,
 } from "firebase/firestore";
-import {
-  getAuth,
-  setPersistence,
-  browserLocalPersistence,
-} from "firebase/auth";
+import { getAuth } from "firebase/auth";
 
-// 🛡️ Firebase Config
+// ⭐ Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyBfEdQ6VymOIcCOyeEuppeGyWfYt4_PKKo",
   authDomain: "library-management-68286.firebaseapp.com",
@@ -28,15 +25,9 @@ const firebaseConfig = {
   measurementId: "G-0D1EFQ7FZW",
 };
 
-// ✅ Initialize Firebase App
-const FIREBASE_APP =
-  getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// ✅ Initialize Auth
+// ✅ Initialize Firebase
+const FIREBASE_APP = initializeApp(firebaseConfig);
 const FIREBASE_AUTH = getAuth(FIREBASE_APP);
-setPersistence(FIREBASE_AUTH, browserLocalPersistence);
-
-// ✅ Initialize Firestore
 const FIREBASE_DB = getFirestore(FIREBASE_APP);
 
 const getMessages = (chatId, setMessages) => {
@@ -50,28 +41,48 @@ const getMessages = (chatId, setMessages) => {
       querySnapshot.forEach((doc) => {
         messages.push({ id: doc.id, ...doc.data() });
       });
-      console.log("Messages fetched:", messages); // Debug log
+      console.log("Messages fetched:", messages);
       setMessages(messages);
     },
     (error) => {
       console.error("Error fetching messages: ", error); // Log error
     }
   );
-  return unsubscribe; // Return unsubscribe to clean up listener
+  return unsubscribe;
 };
 
-// Function to send a new message
+// Update the sendMessage function to match the mobile app structure
+
 const sendMessage = async (chatId, messageText, userId, userEmail) => {
   try {
-    const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
-    await addDoc(messagesRef, {
-      senderId: userId,
-      senderEmail: userEmail,
-      text: messageText,
-      timestamp: serverTimestamp(),
+    console.log("Sending message to chat:", chatId, {
+      messageText,
+      userId,
+      userEmail,
     });
+    const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
+
+    // Structure exactly matching your shown format
+    const messageData = {
+      senderId: userId, // Firebase ID of sender
+      senderEmail: userEmail,
+      text: {
+        // If messageText is already an object with the right structure, use it
+        receiverId:
+          typeof messageText === "object" ? messageText.receiverId : null,
+        senderId: typeof messageText === "object" ? messageText.senderId : null, // Database ID (number)
+        text: typeof messageText === "object" ? messageText.text : messageText,
+      },
+      timestamp: serverTimestamp(),
+    };
+
+    // Debug log
+    console.log("Formatted message to send:", messageData);
+
+    await addDoc(messagesRef, messageData);
+    console.log("Message sent successfully!");
   } catch (error) {
-    console.error("Error sending message: ", error);
+    console.error("Error sending message:", error);
     throw error;
   }
 };
@@ -79,39 +90,81 @@ const sendMessage = async (chatId, messageText, userId, userEmail) => {
 const getAssociatedUsers = async (currentUserId) => {
   try {
     console.log("Fetching chat users for:", currentUserId);
-
-    // Query all messages subcollections
     const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
+    const chatPartners = new Set();
 
-    // Query docs where the current user is the sender
-    const sentQuery = query(
-      messagesGroupRef,
-      where("senderId", "==", currentUserId)
-    );
+    // First try to find chats where current user is the sender (by Firebase ID)
+    try {
+      const sentQuery = query(
+        messagesGroupRef,
+        where("senderId", "==", currentUserId)
+      );
+      const sentSnapshot = await getDocs(sentQuery);
 
-    const sentSnapshot = await getDocs(sentQuery);
-
-    let chatPartners = new Set();
-
-    sentSnapshot.forEach((doc) => {
-      const data = doc.data();
-
-      // Extract receiverId from the nested text object
-      if (data.text && typeof data.text === "object" && data.text.receiverId) {
-        const receiverId = data.text.receiverId;
-
-        if (receiverId && receiverId !== currentUserId) {
-          console.log("Sent message to:", receiverId);
-          chatPartners.add(receiverId);
+      sentSnapshot.forEach((doc) => {
+        const data = doc.data();
+        // The receiverId is in the text object
+        if (
+          data.text &&
+          data.text.receiverId &&
+          data.text.receiverId !== currentUserId
+        ) {
+          console.log(
+            `Found receiver: ${data.text.receiverId} in sent message`
+          );
+          chatPartners.add(data.text.receiverId);
         }
-      }
-    });
+      });
+      console.log(`Found ${sentSnapshot.size} messages where user is sender`);
+    } catch (error) {
+      console.warn("Error fetching sent messages:", error);
+    }
 
-    console.log("Final chat users list:", [...chatPartners]);
-    return [...chatPartners];
+    // Then try to find chats where current user is the receiver (receiverId is inside text object)
+    try {
+      // This requires a collection group index on text.receiverId!
+      const receivedQuery = query(
+        messagesGroupRef,
+        where("text.receiverId", "==", currentUserId)
+      );
+      const receivedSnapshot = await getDocs(receivedQuery);
+
+      receivedSnapshot.forEach((doc) => {
+        const data = doc.data();
+        // The senderId is at the top level
+        if (data.senderId && data.senderId !== currentUserId) {
+          console.log(`Found sender: ${data.senderId} in received message`);
+          chatPartners.add(data.senderId);
+        }
+      });
+      console.log(
+        `Found ${receivedSnapshot.size} messages where user is receiver`
+      );
+    } catch (error) {
+      console.warn(
+        "Error fetching received messages (index may be required):",
+        error
+      );
+      console.warn(
+        "To fix this permanently, create the index in Firebase console"
+      );
+
+      // If no index, add debug users for testing
+      console.log("Adding sample users for testing (since index query failed)");
+      const debugUsers = ["2WL2WRMZuPSv1t3J57JMK9XcOoE2"]; // Replace with actual Firebase IDs
+      debugUsers.forEach((id) => {
+        if (id !== currentUserId) {
+          chatPartners.add(id);
+        }
+      });
+    }
+
+    const partners = [...chatPartners];
+    console.log(`Found ${partners.length} chat partners:`, partners);
+    return partners;
   } catch (error) {
-    console.error("Error fetching associated users:", error);
-    throw error;
+    console.error("Error in getAssociatedUsers:", error);
+    return [];
   }
 };
 

@@ -6,13 +6,10 @@ import { doc, setDoc } from "firebase/firestore";
 import { FIREBASE_AUTH, FIREBASE_DB } from "../../services/Firebase-config.js";
 import ApiHandler from "../../api/ApiHandler.js";
 
-export const RegisterForm = ({
-  registerEmail,
-  registerPassword,
-  setRegisterEmail,
-  setRegisterPassword,
-}) => {
+export const RegisterForm = () => {
   const navigate = useNavigate();
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
   const [isSubmitting, setSubmitting] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -23,10 +20,11 @@ export const RegisterForm = ({
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    // Existing registration logic...
+    // Reset errors
     setEmailError("");
     setPasswordError("");
 
+    // Input validation
     if (!registerEmail.trim() || !registerPassword.trim()) {
       if (!registerEmail.trim()) setEmailError("Email is required.");
       if (!registerPassword.trim()) setPasswordError("Password is required.");
@@ -36,6 +34,12 @@ export const RegisterForm = ({
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(registerEmail)) {
       setEmailError("Please enter a valid email.");
+      return;
+    }
+
+    // Password strength validation
+    if (registerPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
       return;
     }
 
@@ -50,24 +54,29 @@ export const RegisterForm = ({
       );
 
       const firebaseUserId = userCredential.user.uid;
+      console.log("Firebase user created with ID:", firebaseUserId);
 
       // Save user information in Firestore
       await setDoc(doc(FIREBASE_DB, "users", firebaseUserId), {
         email: registerEmail,
         userRole: "Landlord",
         firebaseUId: firebaseUserId,
+        createdAt: new Date(),
       });
+      console.log("User data saved to Firestore");
 
       // Send additional user data to your backend API
       const response = await ApiHandler.post("/Users", {
         email: registerEmail,
-        passwordHash: registerPassword,
+        passwordHash: registerPassword, // Note: Consider not sending plaintext password
         userRole: "Landlord",
         firebaseUId: firebaseUserId,
       });
 
+      console.log("Backend API response:", response);
+
       if (response && response.userId) {
-        toast.success("Registration successful! Please log in.");
+        toast.success("Registration successful! Please complete your profile.");
         navigate(`/userinfo/${response.userId}`);
         setRegisterEmail("");
         setRegisterPassword("");
@@ -75,8 +84,21 @@ export const RegisterForm = ({
         throw new Error("Unexpected API response format.");
       }
     } catch (error) {
-      console.error("Error registering user:", error.message);
-      toast.error(`Registration error: ${error.message}`);
+      console.error("Error registering user:", error);
+
+      // Handle specific Firebase errors
+      if (error.code === "auth/email-already-in-use") {
+        setEmailError("This email is already registered.");
+        toast.error("This email address is already in use.");
+      } else if (error.code === "auth/weak-password") {
+        setPasswordError("Password is too weak.");
+        toast.error("Please choose a stronger password.");
+      } else if (error.code === "auth/invalid-email") {
+        setEmailError("Invalid email format.");
+        toast.error("Please enter a valid email address.");
+      } else {
+        toast.error(`Registration error: ${error.message}`);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -133,7 +155,14 @@ export const RegisterForm = ({
                 className="py-2 bg-indigo-600 text-white text-lg rounded-md hover:bg-indigo-700 transition-colors"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Submitting..." : "Sign up"}
+                {isSubmitting ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
+                    <span>Creating account...</span>
+                  </div>
+                ) : (
+                  "Sign up"
+                )}
               </button>
             </div>
           </form>
