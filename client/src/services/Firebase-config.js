@@ -1,4 +1,3 @@
-// src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
 import {
   getFirestore,
@@ -11,10 +10,12 @@ import {
   where,
   collectionGroup,
   serverTimestamp,
+  getDoc,
+  doc,
+  setDoc,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// ⭐ Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyBfEdQ6VymOIcCOyeEuppeGyWfYt4_PKKo",
   authDomain: "library-management-68286.firebaseapp.com",
@@ -25,62 +26,212 @@ const firebaseConfig = {
   measurementId: "G-0D1EFQ7FZW",
 };
 
-// ✅ Initialize Firebase
+// Initialize Firebase
 const FIREBASE_APP = initializeApp(firebaseConfig);
 const FIREBASE_AUTH = getAuth(FIREBASE_APP);
 const FIREBASE_DB = getFirestore(FIREBASE_APP);
 
 const getMessages = (chatId, setMessages) => {
-  const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
-  const q = query(messagesRef, orderBy("timestamp", "asc"));
-  const unsubscribe = onSnapshot(
-    q,
-    (querySnapshot) => {
-      const messages = [];
+  // Check if chat exists first
+  getDoc(doc(FIREBASE_DB, "chats", chatId))
+    .then((chatDoc) => {
+      if (chatDoc.exists()) {
+        setupDirectMessageListener(chatId, setMessages);
+      } else {
+        setMessages([]);
+      }
+    })
+    .catch((err) => {
+      setMessages([]);
+    });
 
-      querySnapshot.forEach((doc) => {
-        messages.push({ id: doc.id, ...doc.data() });
-      });
-      console.log("Messages fetched:", messages);
-      setMessages(messages);
-    },
-    (error) => {
-      console.error("Error fetching messages: ", error); // Log error
-    }
-  );
-  return unsubscribe;
+  function setupDirectMessageListener(chatId, setMessages) {
+    const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const messages = [];
+        querySnapshot.forEach((doc) => {
+          messages.push({ id: doc.id, ...doc.data() });
+        });
+        setMessages(messages);
+      },
+      (error) => {
+        console.error(`Error fetching messages from ${chatId}:`, error);
+      }
+    );
+    return unsubscribe;
+  }
+
+  return () => {};
 };
 
-// Update the sendMessage function to match the mobile app structure
+const findMessagesBetweenUsers = async (
+  currentUserFirebaseId,
+  partnerFirebaseId
+) => {
+  let messages = [];
 
-const sendMessage = async (chatId, messageText, userId, userEmail) => {
   try {
-    console.log("Sending message to chat:", chatId, {
-      messageText,
-      userId,
-      userEmail,
+    // Query all messages across all chats
+    const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
+
+    // Find messages where: currentUser → partnerUser
+    const sentByCurrentQuery = query(
+      messagesGroupRef,
+      where("senderId", "==", currentUserFirebaseId)
+    );
+
+    const sentByCurrentSnapshot = await getDocs(sentByCurrentQuery);
+
+    sentByCurrentSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      // Check both direct receiverId and nested receiverId
+      const receiverId =
+        data.receiverId ||
+        (data.text && typeof data.text === "object" && data.text.receiverId);
+
+      if (receiverId === partnerFirebaseId) {
+        messages.push({ id: doc.id, ...data });
+      }
     });
+
+    // Find messages where: partnerUser → currentUser
+    const sentByPartnerQuery = query(
+      messagesGroupRef,
+      where("senderId", "==", partnerFirebaseId)
+    );
+
+    const sentByPartnerSnapshot = await getDocs(sentByPartnerQuery);
+
+    sentByPartnerSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      // Check both direct receiverId and nested receiverId
+      const receiverId =
+        data.receiverId ||
+        (data.text && typeof data.text === "object" && data.text.receiverId);
+
+      if (receiverId === currentUserFirebaseId) {
+        messages.push({ id: doc.id, ...data });
+      }
+    });
+
+    // Also check chat rooms directly
+    try {
+      const chatsRef = collection(FIREBASE_DB, "chats");
+      const chatsSnapshot = await getDocs(chatsRef);
+
+      for (const chatDoc of chatsSnapshot.docs) {
+        const chatId = chatDoc.id;
+
+        // Only process chat rooms that might involve these users
+        if (
+          chatId.includes(currentUserFirebaseId) ||
+          chatId.includes(partnerFirebaseId)
+        ) {
+          const messagesRef = collection(
+            FIREBASE_DB,
+            "chats",
+            chatId,
+            "messages"
+          );
+          const messagesSnapshot = await getDocs(
+            query(messagesRef, orderBy("timestamp", "asc"))
+          );
+
+          for (const messageDoc of messagesSnapshot.docs) {
+            const data = messageDoc.data();
+
+            // Check if this message is between our two users
+            if (
+              (data.senderId === currentUserFirebaseId &&
+                (data.receiverId === partnerFirebaseId ||
+                  (data.text &&
+                    typeof data.text === "object" &&
+                    data.text.receiverId === partnerFirebaseId))) ||
+              (data.senderId === partnerFirebaseId &&
+                (data.receiverId === currentUserFirebaseId ||
+                  (data.text &&
+                    typeof data.text === "object" &&
+                    data.text.receiverId === currentUserFirebaseId)))
+            ) {
+              // Avoid duplicates
+              if (!messages.some((msg) => msg.id === messageDoc.id)) {
+                messages.push({ id: messageDoc.id, ...data });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Continue with the messages we already found
+    }
+
+    // Sort messages by timestamp
+    messages.sort((a, b) => {
+      const timeA =
+        a.timestamp?.seconds ||
+        (a.timestamp instanceof Date ? a.timestamp.getTime() / 1000 : 0);
+      const timeB =
+        b.timestamp?.seconds ||
+        (b.timestamp instanceof Date ? b.timestamp.getTime() / 1000 : 0);
+      return timeA - timeB;
+    });
+
+    return messages;
+  } catch (error) {
+    console.error("Error finding messages between users:", error);
+    return [];
+  }
+};
+
+const sendMessage = async (chatId, messageData, senderFirebaseId) => {
+  try {
+    // First ensure the chat document exists
+    await setDoc(
+      doc(FIREBASE_DB, "chats", chatId),
+      { lastUpdated: serverTimestamp() },
+      { merge: true }
+    );
+
     const messagesRef = collection(FIREBASE_DB, "chats", chatId, "messages");
 
-    // Structure exactly matching your shown format
-    const messageData = {
-      senderId: userId, // Firebase ID of sender
-      senderEmail: userEmail,
-      text: {
-        // If messageText is already an object with the right structure, use it
-        receiverId:
-          typeof messageText === "object" ? messageText.receiverId : null,
-        senderId: typeof messageText === "object" ? messageText.senderId : null, // Database ID (number)
-        text: typeof messageText === "object" ? messageText.text : messageText,
-      },
-      timestamp: serverTimestamp(),
-    };
+    // Get current user's email to ensure senderEmail is always present
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    const userEmail = currentUser ? currentUser.email : "unknown@user.com";
 
-    // Debug log
-    console.log("Formatted message to send:", messageData);
+    // Prepare the message data in the correct format
+    let finalMessageData = {};
 
-    await addDoc(messagesRef, messageData);
-    console.log("Message sent successfully!");
+    if (typeof messageData === "string") {
+      // Simple string message
+      finalMessageData = {
+        text: messageData,
+        senderId: senderFirebaseId,
+        senderEmail: userEmail,
+        timestamp: serverTimestamp(),
+      };
+    } else if (typeof messageData === "object") {
+      // Object message with proper formatting
+      finalMessageData = {
+        text:
+          typeof messageData.text === "object"
+            ? messageData.text.text
+            : messageData.text,
+        senderId: messageData.senderId || senderFirebaseId,
+        senderEmail: messageData.senderEmail || userEmail,
+        ...(messageData.receiverId && { receiverId: messageData.receiverId }),
+        timestamp: messageData.timestamp || serverTimestamp(),
+      };
+    } else {
+      throw new Error("Invalid message data format");
+    }
+
+    // Add document to Firestore
+    const docRef = await addDoc(messagesRef, finalMessageData);
+    return docRef.id;
   } catch (error) {
     console.error("Error sending message:", error);
     throw error;
@@ -89,81 +240,85 @@ const sendMessage = async (chatId, messageText, userId, userEmail) => {
 
 const getAssociatedUsers = async (currentUserId) => {
   try {
-    console.log("Fetching chat users for:", currentUserId);
-    const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
     const chatPartners = new Set();
 
-    // First try to find chats where current user is the sender (by Firebase ID)
+    // Method 1: Find chats directly
     try {
+      const chatsRef = collection(FIREBASE_DB, "chats");
+      const chatsSnapshot = await getDocs(chatsRef);
+
+      // Process each chat room to find messages
+      for (const chatDoc of chatsSnapshot.docs) {
+        const chatId = chatDoc.id;
+        // Only check chats that might involve the current user
+        if (!chatId.includes("chat_")) continue;
+
+        const messagesRef = collection(
+          FIREBASE_DB,
+          "chats",
+          chatId,
+          "messages"
+        );
+        const messagesSnapshot = await getDocs(
+          query(messagesRef, orderBy("timestamp", "desc"))
+        );
+
+        // Find messages where current user is receiver
+        for (const messageDoc of messagesSnapshot.docs) {
+          const data = messageDoc.data();
+
+          if (
+            data.text &&
+            typeof data.text === "object" &&
+            data.text.receiverId === currentUserId
+          ) {
+            // Add sender to chat partners
+            if (data.senderId && data.senderId !== currentUserId) {
+              chatPartners.add(data.senderId);
+            }
+
+            // Also check text.senderId for database ID
+            if (
+              data.text.senderId &&
+              String(data.text.senderId) !== String(currentUserId)
+            ) {
+              chatPartners.add(data.text.senderId);
+            }
+          }
+        }
+      }
+    } catch (err) {}
+
+    // Method 2: Use collectionGroup
+    try {
+      const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
       const sentQuery = query(
         messagesGroupRef,
-        where("senderId", "==", currentUserId)
+        where("senderId", "!=", currentUserId)
       );
       const sentSnapshot = await getDocs(sentQuery);
 
-      sentSnapshot.forEach((doc) => {
+      // Check messages for receivers
+      sentSnapshot.docs.forEach((doc) => {
         const data = doc.data();
-        // The receiverId is in the text object
+
         if (
           data.text &&
-          data.text.receiverId &&
-          data.text.receiverId !== currentUserId
+          typeof data.text === "object" &&
+          data.text.receiverId === currentUserId
         ) {
-          console.log(
-            `Found receiver: ${data.text.receiverId} in sent message`
-          );
-          chatPartners.add(data.text.receiverId);
+          if (data.senderId) {
+            chatPartners.add(data.senderId);
+          }
         }
       });
-      console.log(`Found ${sentSnapshot.size} messages where user is sender`);
-    } catch (error) {
-      console.warn("Error fetching sent messages:", error);
+    } catch (err) {
+      // Continue with partners already found
     }
 
-    // Then try to find chats where current user is the receiver (receiverId is inside text object)
-    try {
-      // This requires a collection group index on text.receiverId!
-      const receivedQuery = query(
-        messagesGroupRef,
-        where("text.receiverId", "==", currentUserId)
-      );
-      const receivedSnapshot = await getDocs(receivedQuery);
-
-      receivedSnapshot.forEach((doc) => {
-        const data = doc.data();
-        // The senderId is at the top level
-        if (data.senderId && data.senderId !== currentUserId) {
-          console.log(`Found sender: ${data.senderId} in received message`);
-          chatPartners.add(data.senderId);
-        }
-      });
-      console.log(
-        `Found ${receivedSnapshot.size} messages where user is receiver`
-      );
-    } catch (error) {
-      console.warn(
-        "Error fetching received messages (index may be required):",
-        error
-      );
-      console.warn(
-        "To fix this permanently, create the index in Firebase console"
-      );
-
-      // If no index, add debug users for testing
-      console.log("Adding sample users for testing (since index query failed)");
-      const debugUsers = ["2WL2WRMZuPSv1t3J57JMK9XcOoE2"]; // Replace with actual Firebase IDs
-      debugUsers.forEach((id) => {
-        if (id !== currentUserId) {
-          chatPartners.add(id);
-        }
-      });
-    }
-
-    const partners = [...chatPartners];
-    console.log(`Found ${partners.length} chat partners:`, partners);
-    return partners;
+    return [...chatPartners];
   } catch (error) {
-    console.error("Error in getAssociatedUsers:", error);
+    console.error("Error fetching associated users:", error);
     return [];
   }
 };
@@ -175,4 +330,5 @@ export {
   getMessages,
   sendMessage,
   getAssociatedUsers,
+  findMessagesBetweenUsers,
 };
