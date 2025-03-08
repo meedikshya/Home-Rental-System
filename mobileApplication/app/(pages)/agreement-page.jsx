@@ -38,23 +38,20 @@ const Agreement = () => {
   const [renterName, setRenterName] = useState("");
   const [isAgreed, setIsAgreed] = useState(false);
   const [isPending, setIsPending] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
   const [agreementExists, setAgreementExists] = useState(false);
+  const [agreementId, setAgreementId] = useState(null);
 
   useEffect(() => {
-    console.log("Renter ID in Agreement Page:", renterId); // Log the renterId
     const fetchRenterName = async () => {
       try {
         const userDetailsResponse = await ApiHandler.get(
           `/UserDetails/userId/${renterId}`
         );
-        console.log("User Details Response:", userDetailsResponse); // Log the response
         if (userDetailsResponse) {
           const { firstName, lastName } = userDetailsResponse;
           const fullName = `${firstName} ${lastName}`;
           setRenterName(fullName);
-          console.log("Renter Name:", fullName); // Log the renter's name
-        } else {
-          console.log("No user details found for renterId:", renterId);
         }
       } catch (error) {
         console.error("Error fetching renter name:", error);
@@ -67,34 +64,37 @@ const Agreement = () => {
   }, [renterId]);
 
   useEffect(() => {
-    console.log("Booking ID in Agreement Page:", bookingId); // Log the bookingId
     const fetchAgreementDetails = async () => {
       try {
         const response = await ApiHandler.get(
           `/Agreements/byBookingId/${bookingId}`
         );
-        console.log("Agreement Details Response:", response); // Log the response
         if (response) {
-          console.log("Agreement Details for Booking ID:", bookingId, response); // Log the agreement details
           setStartDate(new Date(response.startDate));
           setEndDate(new Date(response.endDate));
           setIsAgreed(true);
-          setIsPending(response.status === "Pending");
           setAgreementExists(true);
+          setAgreementId(response.agreementId);
+
+          // Check agreement status
+          const status = response.status;
+          setIsPending(status === "Pending");
+          setIsApproved(status === "Approved");
         } else {
           setStartDate(null);
           setEndDate(null);
           setIsAgreed(false);
           setIsPending(false);
+          setIsApproved(false);
           setAgreementExists(false);
         }
       } catch (error) {
         if (error.response && error.response.status === 404) {
-          console.log("No agreement found for booking ID:", bookingId);
           setStartDate(null);
           setEndDate(null);
           setIsAgreed(false);
           setIsPending(false);
+          setIsApproved(false);
           setAgreementExists(false);
         } else {
           console.error("Error fetching agreement details:", error);
@@ -162,6 +162,20 @@ const Agreement = () => {
       console.error("Error creating agreement:", error);
       Alert.alert("Error", "There was an error processing your request.");
     }
+  };
+
+  const handleProceedPayment = () => {
+    navigation.navigate("Payment", {
+      propertyId,
+      landlordId,
+      bookingId,
+      renterId,
+      agreementId,
+      price,
+      address,
+      startDate: startDate.toISOString().split("T")[0],
+      endDate: endDate.toISOString().split("T")[0],
+    });
   };
 
   return (
@@ -247,21 +261,70 @@ const Agreement = () => {
               </Text>
               .
             </Text>
-            <View className="mt-4 w-full">
-              <TouchableOpacity
-                className={`p-3 rounded-lg w-full ${
-                  isPending ? "bg-gray-400" : "bg-[#20319D]"
+
+            {/* Status Badge */}
+            <View className="mt-4 mb-4">
+              <View
+                className={`py-1 px-3 rounded-full self-start ${
+                  isPending
+                    ? "bg-yellow-200"
+                    : isApproved
+                    ? "bg-green-200"
+                    : "bg-gray-200"
                 }`}
-                onPress={handleProceedBooking}
-                disabled={isPending}
               >
-                <Text className="text-white text-lg font-semibold text-center">
-                  {isPending ? "Pending Request" : "Proceed Booking"}
+                <Text
+                  className={`${
+                    isPending
+                      ? "text-yellow-800"
+                      : isApproved
+                      ? "text-green-800"
+                      : "text-gray-800"
+                  }`}
+                >
+                  {isPending
+                    ? "Pending"
+                    : isApproved
+                    ? "Approved"
+                    : "Status Unknown"}
                 </Text>
-              </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Action Button */}
+            <View className="mt-4 w-full">
+              {isPending ? (
+                <TouchableOpacity
+                  className="p-3 rounded-lg w-full bg-gray-400"
+                  disabled={true}
+                >
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Pending Landlord Approval
+                  </Text>
+                </TouchableOpacity>
+              ) : isApproved ? (
+                <TouchableOpacity
+                  className="p-3 rounded-lg w-full bg-green-500"
+                  onPress={handleProceedPayment}
+                >
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Proceed to Payment
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  className="p-3 rounded-lg w-full bg-[#20319D]"
+                  onPress={handleProceedBooking}
+                >
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Proceed Booking
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ) : (
+          /* Rest of your existing code for new agreements */
           <>
             <View className="mt-6 bg-white p-4 rounded-lg shadow-lg">
               <Text className="text-gray-600 text-base mb-2">

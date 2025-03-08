@@ -50,7 +50,7 @@ const Details = () => {
     const fetchCurrentUserId = async () => {
       try {
         const userId = await getUserDataFromFirebase();
-        console.log("Fetched Firebase User ID:", userId); // Log user ID
+        console.log("Fetched Firebase User ID:", userId);
         if (userId) {
           setCurrentUserId(userId);
         }
