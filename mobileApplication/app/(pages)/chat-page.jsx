@@ -20,36 +20,31 @@ const Chat = () => {
   const { landlordId, landlordName, renterName } = route.params;
 
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentFirebaseId, setCurrentFirebaseId] = useState(null);
   const [landlordFirebaseId, setLandlordFirebaseId] = useState(null);
 
-  // Fetch current user ID
+  // Fetch current user ID and Firebase ID
   useEffect(() => {
-    const fetchCurrentUserId = async () => {
+    const fetchCurrentUser = async () => {
       try {
         const auth = getAuth();
         const currentUser = auth.currentUser;
         if (currentUser) {
           const firebaseUserId = currentUser.uid;
-          console.log("Firebase User ID:", firebaseUserId);
+          setCurrentFirebaseId(firebaseUserId);
+
           const response = await ApiHandler.get(
             `/Users/firebase/${firebaseUserId}`
           );
-          console.log("API Response:", response);
           if (response) {
-            const userId = response;
-            console.log("User ID retrieved:", userId);
-            setCurrentUserId(userId);
-          } else {
-            console.log("No user data returned from the API.");
+            setCurrentUserId(response);
           }
-        } else {
-          console.log("No current user found.");
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
       }
     };
-    fetchCurrentUserId();
+    fetchCurrentUser();
   }, []);
 
   // Fetch landlord's Firebase ID
@@ -59,13 +54,8 @@ const Chat = () => {
         const response = await ApiHandler.get(
           `/Users/firebaseByUserId/${landlordId}`
         );
-        console.log("Landlord Firebase ID Response:", response);
         if (response) {
-          const firebaseId = response;
-          console.log("Landlord Firebase ID retrieved:", firebaseId);
-          setLandlordFirebaseId(firebaseId);
-        } else {
-          console.log("No landlord Firebase ID returned from the API.");
+          setLandlordFirebaseId(response);
         }
       } catch (error) {
         console.error("Error fetching landlord Firebase ID:", error);
@@ -76,8 +66,54 @@ const Chat = () => {
     }
   }, [landlordId]);
 
+  // Generate chat ID using database IDs for Firebase path
   const chatId = `chat_${currentUserId}_${landlordId}`;
-  const { messages, loading, error, sendNewMessage } = useChat(chatId);
+
+  const { messages, loading, error, sendNewMessage } = useChat(
+    chatId,
+    currentFirebaseId,
+    landlordFirebaseId
+  );
+
+  // Function to check if a message is from current user
+  const isFromCurrentUser = (message) => {
+    if (!message || !currentFirebaseId) return false;
+
+    if (message.senderId === currentFirebaseId) return true;
+
+    // Also check nested structure
+    if (message.text && typeof message.text === "object") {
+      if (
+        message.text.senderId === currentFirebaseId ||
+        String(message.text.senderId) === String(currentUserId)
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // Function to extract message text regardless of format
+  const getMessageText = (message) => {
+    if (!message) return "No message";
+
+    // Direct string
+    if (typeof message.text === "string") {
+      return message.text;
+    }
+
+    // Nested object
+    if (message.text && typeof message.text === "object" && message.text.text) {
+      return message.text.text;
+    }
+
+    // Other possible fields
+    if (message.body) return message.body;
+    if (message.content) return message.content;
+
+    return "Message content unavailable";
+  };
 
   if (loading) {
     return (
@@ -110,15 +146,43 @@ const Chat = () => {
       {/* Messages List */}
       <FlatList
         data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
+        keyExtractor={(item) => item.id || Math.random().toString()}
+        contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 20 }}
         renderItem={({ item }) => (
-          <View className="p-4 my-2 rounded-lg max-w-[75%] self-end bg-blue-100">
+          <View
+            className={`p-4 my-2 rounded-lg max-w-[75%] ${
+              isFromCurrentUser(item)
+                ? "self-end bg-blue-100"
+                : "self-start bg-white border border-gray-200"
+            }`}
+          >
             <Text className="text-sm text-gray-800">
-              {renterName}: {item.text.text}
+              {getMessageText(item)}
             </Text>
+            <View className="flex-row justify-between mt-1">
+              <Text className="text-xs text-gray-500">
+                {isFromCurrentUser(item) ? renterName : landlordName}
+              </Text>
+              <Text className="text-xs text-gray-500">
+                {item.timestamp?.seconds
+                  ? new Date(item.timestamp.seconds * 1000).toLocaleTimeString(
+                      [],
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }
+                    )
+                  : item.timestamp instanceof Date
+                  ? item.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "Just now"}
+              </Text>
+            </View>
           </View>
         )}
+        inverted={false}
       />
 
       {/* Message Input */}
@@ -126,7 +190,8 @@ const Chat = () => {
         onSendMessage={(message) =>
           sendNewMessage({
             text: message,
-            senderId: currentUserId,
+            senderId: currentFirebaseId,
+            senderEmail: getAuth().currentUser?.email || "",
             receiverId: landlordFirebaseId,
           })
         }
