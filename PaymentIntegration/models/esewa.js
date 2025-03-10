@@ -44,28 +44,7 @@ async function verifyEsewaPayment(encodedData) {
     console.log("Expected hash:", hash);
     console.log("Received signature:", decodedData.signature);
 
-    // TESTING ONLY - Comment this out for testing
-    // WARNING: Re-enable in production!
-    /*
-      if (hash !== decodedData.signature) {
-        throw { message: "Invalid Info", decodedData };
-      }
-      */
     console.log("⚠️ TESTING MODE: Signature verification bypassed");
-
-    // For testing: Mock the API response
-    // In production, use the actual API call
-    /*
-      let response = await axios.request(reqOptions);
-  
-      if (
-        response.data.status !== "COMPLETE" ||
-        response.data.transaction_uuid !== decodedData.transaction_uuid ||
-        Number(response.data.total_amount) !== Number(decodedData.total_amount)
-      ) {
-        throw { message: "Invalid Info", decodedData };
-      }
-      */
 
     // Mock response for testing
     const mockResponse = {

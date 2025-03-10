@@ -14,5 +14,4 @@ const db = new Sequelize(
   }
 );
 
-// Export just the db connection
 module.exports = { db };
