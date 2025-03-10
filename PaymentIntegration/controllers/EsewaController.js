@@ -5,10 +5,11 @@ const Agreement = require("../models/Agreement");
 const Payment = require("../models/Payment");
 const { db } = require("../db");
 
-// Initialize eSewa payment for an agreement with signature-based approach
+// Update the initialize-agreement-payment route:
+
 router.post("/initialize-agreement-payment", async (req, res) => {
   try {
-    const { agreementId, amount } = req.body;
+    const { agreementId, amount, uniqueSuffix } = req.body;
 
     if (!agreementId || !amount) {
       return res.status(400).json({
@@ -17,34 +18,17 @@ router.post("/initialize-agreement-payment", async (req, res) => {
       });
     }
 
-    // Validate agreement exists and is pending payment
+    // Validate agreement exists
     const agreement = await Agreement.findOne({
       where: {
         agreementId: agreementId,
-        status: "Approved",
       },
     });
 
     if (!agreement) {
       return res.status(400).json({
         success: false,
-        message: "Agreement not found or payment not required",
-      });
-    }
-
-    // Check if payment already exists for this agreement
-    const existingPayment = await Payment.findOne({
-      where: {
-        agreementId: agreementId,
-        paymentStatus: "Completed",
-      },
-    });
-
-    if (existingPayment) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment already completed for this agreement",
-        payment: existingPayment,
+        message: "Agreement not found",
       });
     }
 
@@ -58,32 +42,37 @@ router.post("/initialize-agreement-payment", async (req, res) => {
       paymentDate: new Date(),
     });
 
-    // Initiate payment with eSewa - get payment hash
+    // Create unique transaction ID by combining payment ID with suffix
+    const transactionId = uniqueSuffix
+      ? `${payment.paymentId}-${uniqueSuffix}`
+      : payment.paymentId.toString();
+
+    // Store the transactionId for later reference
+    await payment.update({
+      TransactionId: transactionId,
+    });
+
+    // Initiate payment with eSewa using the unique transaction ID
     const paymentInitiate = await getEsewaPaymentHash({
       amount: amount,
-      transaction_uuid: payment.paymentId.toString(),
+      transaction_uuid: transactionId, // Use the unique transaction ID here
     });
 
-    // Update agreement status
-    await agreement.update({
-      status: "PAYMENT_INITIATED",
-    });
-
-    // Respond with payment details (signature-based approach)
+    // Respond with payment details
     res.json({
       success: true,
-      payment: paymentInitiate, // Contains signature and field names
+      payment: paymentInitiate,
       paymentData: {
         paymentId: payment.paymentId,
         amount: payment.amount,
         agreementId: payment.agreementId,
         renterId: payment.renterId,
         status: payment.paymentStatus,
+        transactionId: transactionId, // Include this for reference
       },
-      // Include these additional fields for frontend integration
       paymentParams: {
         amt: amount,
-        pid: payment.paymentId.toString(),
+        pid: transactionId, // Important: Use the unique transaction ID here
         scd: process.env.ESEWA_PRODUCT_CODE,
       },
     });
@@ -165,14 +154,7 @@ router.get("/complete-payment", async (req, res) => {
       { transaction }
     );
 
-    // Update the related agreement status
-    await Agreement.update(
-      { status: "ACTIVE" },
-      {
-        where: { agreementId: payment.agreementId },
-        transaction,
-      }
-    );
+    // No agreement status update here - payment process is independent
 
     await transaction.commit();
 
@@ -227,12 +209,6 @@ router.post("/payment-failed", async (req, res) => {
       paymentStatus: "Failed",
     });
 
-    // Update agreement status back to pending payment
-    await Agreement.update(
-      { status: "PENDING_PAYMENT" },
-      { where: { agreementId: payment.agreementId } }
-    );
-
     res.json({
       success: true,
       message: "Payment failure recorded",
@@ -245,69 +221,6 @@ router.post("/payment-failed", async (req, res) => {
     });
   } catch (error) {
     console.error("Error recording payment failure:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-// Get payment status for an agreement
-router.get("/agreement-payment-status/:agreementId", async (req, res) => {
-  try {
-    const { agreementId } = req.params;
-
-    if (!agreementId) {
-      return res.status(400).json({
-        success: false,
-        message: "Agreement ID is required",
-      });
-    }
-
-    // Find the latest payment for this agreement
-    const payment = await Payment.findOne({
-      where: { agreementId: agreementId },
-      order: [["paymentDate", "DESC"]],
-    });
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "No payment found for this agreement",
-      });
-    }
-
-    // Get related agreement
-    const agreement = await Agreement.findOne({
-      where: { agreementId: agreementId },
-    });
-
-    if (!agreement) {
-      return res.status(404).json({
-        success: false,
-        message: "Agreement not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      payment: {
-        paymentId: payment.paymentId,
-        amount: payment.amount,
-        status: payment.paymentStatus,
-        date: payment.paymentDate,
-        paymentGateway: payment.PaymentGateway,
-        transactionId: payment.TransactionId,
-      },
-      agreement: {
-        agreementId: agreement.agreementId,
-        status: agreement.status,
-        startDate: agreement.startDate,
-        endDate: agreement.endDate,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching payment status:", error);
     res.status(500).json({
       success: false,
       error: error.message,

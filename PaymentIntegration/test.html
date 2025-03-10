@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>eSewa Payment Integration Test</title>
+    <style>
+        /* Your existing styles remain the same */
+    </style>
+</head>
+<body>
+    <h1>eSewa Payment Integration Test</h1>
+    
+    <div class="info-box">
+        <h3>Test Account Info</h3>
+        <b>eSewa ID:</b> 9806800001/2/3/4/5<br>
+        <b>Password:</b> Nepal@123<br>
+        <b>MPIN:</b> 1122<br>
+        <b>Token:</b> 123456
+    </div>
+
+    <div class="container">
+        <h2>Step 1: Initialize Payment</h2>
+        <div class="form-group">
+            <label for="agreementId">Agreement ID:</label>
+            <input type="number" id="agreementId" value="11">
+        </div>
+        <div class="form-group">
+            <label for="paymentAmount">Payment Amount:</label>
+            <input type="number" id="paymentAmount" value="1000">
+        </div>
+        <!-- Add suffix field for unique transaction IDs -->
+        <div class="form-group">
+            <label for="uniqueSuffix">Unique Suffix (change this for each test):</label>
+            <input type="text" id="uniqueSuffix" value="">
+        </div>
+        <button id="generateSuffixBtn" class="btn" style="background-color: #28a745; color: white; margin-bottom: 15px;">Generate Random Suffix</button>
+        <br>
+        <button id="initializeBtn" class="btn btn-primary">Initialize Payment</button>
+        <button id="resetBtn" class="btn" style="background-color: #6c757d; color: white; margin-left: 10px;">Reset</button>
+        
+        <div id="apiResponse" class="response-box" style="display: none;"></div>
+    </div>
+
+    <div id="paymentForm" class="container">
+        <h2>Step 2: Complete Payment with eSewa</h2>
+        <form id="esewaForm" action="https://rc-epay.esewa.com.np/api/epay/main/v2/form" method="POST">
+            <!-- Your existing form fields remain the same -->
+            <div class="form-group">
+                <label>Amount:</label>
+                <input type="text" id="amount" name="amount" readonly>
+            </div>
+            <div class="form-group">
+                <label>Tax Amount:</label>
+                <input type="text" id="tax_amount" name="tax_amount" value="0" readonly>
+            </div>
+            <div class="form-group">
+                <label>Total Amount:</label>
+                <input type="text" id="total_amount" name="total_amount" readonly>
+            </div>
+            <div class="form-group">
+                <label>Transaction UUID:</label>
+                <input type="text" id="transaction_uuid" name="transaction_uuid" readonly>
+            </div>
+            <div class="form-group">
+                <label>Product Code:</label>
+                <input type="text" id="product_code" name="product_code" readonly>
+            </div>
+            <div class="form-group">
+                <label>Product Service Charge:</label>
+                <input type="text" id="product_service_charge" name="product_service_charge" value="0" readonly>
+            </div>
+            <div class="form-group">
+                <label>Product Delivery Charge:</label>
+                <input type="text" id="product_delivery_charge" name="product_delivery_charge" value="0" readonly>
+            </div>
+            <div class="form-group">
+                <label>Success URL:</label>
+                <input type="text" id="success_url" name="success_url" value="http://localhost:5001/api/esewa/complete-payment" readonly>
+            </div>
+            <div class="form-group">
+                <label>Failure URL:</label>
+                <input type="text" id="failure_url" name="failure_url" value="http://localhost:5001/api/esewa/payment-failed" readonly>
+            </div>
+            <div class="form-group">
+                <label>Signed Field Names:</label>
+                <input type="text" id="signed_field_names" name="signed_field_names" readonly>
+            </div>
+            <div class="form-group">
+                <label>Signature:</label>
+                <input type="text" id="signature" name="signature" readonly>
+            </div>
+            <button type="submit" class="btn btn-success">Pay with eSewa</button>
+        </form>
+    </div>
+
+    <script>
+        // Generate random suffix
+        document.getElementById('generateSuffixBtn').addEventListener('click', function() {
+            const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            document.getElementById('uniqueSuffix').value = randomSuffix;
+        });
+        
+        // Generate random suffix on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            document.getElementById('uniqueSuffix').value = randomSuffix;
+        });
+        
+        // Reset button handler
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            document.getElementById('paymentForm').style.display = 'none';
+            document.getElementById('apiResponse').style.display = 'none';
+            // Generate a new random suffix
+            const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            document.getElementById('uniqueSuffix').value = randomSuffix;
+        });
+
+        // Initialize payment button handler
+        document.getElementById('initializeBtn').addEventListener('click', async function() {
+            const agreementId = document.getElementById('agreementId').value;
+            const amount = document.getElementById('paymentAmount').value;
+            const uniqueSuffix = document.getElementById('uniqueSuffix').value;
+            
+            try {
+                // Call your API to initialize payment with unique suffix
+                const response = await fetch('/api/esewa/initialize-agreement-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        agreementId: parseInt(agreementId),
+                        amount: parseFloat(amount),
+                        uniqueSuffix: uniqueSuffix // Add unique suffix for transaction ID
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Display API response for debugging
+                const apiResponseElement = document.getElementById('apiResponse');
+                apiResponseElement.textContent = JSON.stringify(data, null, 2);
+                apiResponseElement.style.display = 'block';
+                
+                if (data.success) {
+                    // Populate the form with values from API
+                    document.getElementById('amount').value = data.paymentParams.amt;
+                    document.getElementById('total_amount').value = data.paymentParams.amt;
+                    document.getElementById('transaction_uuid').value = data.paymentParams.pid;
+                    document.getElementById('product_code').value = data.paymentParams.scd;
+                    document.getElementById('signed_field_names').value = data.payment.signed_field_names;
+                    document.getElementById('signature').value = data.payment.signature;
+                    
+                    // Show the payment form
+                    document.getElementById('paymentForm').style.display = 'block';
+                    
+                    // Scroll to the payment form
+                    document.getElementById('paymentForm').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error initializing payment:', error);
+                alert('Failed to initialize payment. Check console for details.');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -18,11 +18,13 @@ const routes = require("./routes/Routes");
 
 // Middleware
 
-
-
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.get("/", function (req, res) {
+  res.sendFile(__dirname + "/test.html");
+});
 
 // Test database connection
 db.authenticate()
