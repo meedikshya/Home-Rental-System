@@ -101,14 +101,23 @@ const ChatList = () => {
     fetchChatUsers();
   }, [fetchRenterName, fetchChatUsers]);
 
-  // Navigate to Chat screen for conversation with a specific user.
+  // Update the handleUserClick function in chat.jsx
   const handleUserClick = (user) => {
+    if (!user || !user.userId || !user.firebaseId) {
+      Alert.alert(
+        "Error",
+        "Cannot start chat with this user - missing information"
+      );
+      return;
+    }
+
     router.push({
       pathname: "/(pages)/chat-page",
       params: {
-        landlordId: user.userId, // conversation partner's user ID
-        landlordName: user.fullName, // conversation partner's full name
-        renterName: renterName || "Unknown Renter",
+        landlordId: user.userId, // Database ID
+        landlordFirebaseId: user.firebaseId, // Firebase ID - add this!
+        landlordName: user.fullName || "User",
+        renterName: renterName || "Me",
       },
     });
   };

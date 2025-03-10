@@ -17,11 +17,18 @@ import ApiHandler from "../../api/ApiHandler";
 const Chat = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const { landlordId, landlordName, renterName } = route.params;
+  const {
+    landlordId,
+    landlordName,
+    renterName,
+    landlordFirebaseId: initialLandlordFirebaseId,
+  } = route.params;
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentFirebaseId, setCurrentFirebaseId] = useState(null);
-  const [landlordFirebaseId, setLandlordFirebaseId] = useState(null);
+  const [landlordFirebaseId, setLandlordFirebaseId] = useState(
+    initialLandlordFirebaseId
+  );
 
   // Fetch current user ID and Firebase ID
   useEffect(() => {
@@ -47,9 +54,13 @@ const Chat = () => {
     fetchCurrentUser();
   }, []);
 
-  // Fetch landlord's Firebase ID
+  // Fetch landlord's Firebase ID if not provided
   useEffect(() => {
     const fetchLandlordFirebaseId = async () => {
+      if (initialLandlordFirebaseId) {
+        return; // Already have it from params
+      }
+
       try {
         const response = await ApiHandler.get(
           `/Users/firebaseByUserId/${landlordId}`
@@ -61,14 +72,17 @@ const Chat = () => {
         console.error("Error fetching landlord Firebase ID:", error);
       }
     };
+
     if (landlordId) {
       fetchLandlordFirebaseId();
     }
-  }, [landlordId]);
+  }, [landlordId, initialLandlordFirebaseId]);
 
   // Generate chat ID using database IDs for Firebase path
-  const chatId = `chat_${currentUserId}_${landlordId}`;
+  const chatId =
+    currentUserId && landlordId ? `chat_${landlordId}_${currentUserId}` : null;
 
+  // Use the enhanced useChat hook with all parameters for complete message fetching
   const { messages, loading, error, sendNewMessage } = useChat(
     chatId,
     currentFirebaseId,
@@ -187,14 +201,30 @@ const Chat = () => {
 
       {/* Message Input */}
       <MessageInput
-        onSendMessage={(message) =>
-          sendNewMessage({
-            text: message,
-            senderId: currentFirebaseId,
-            senderEmail: getAuth().currentUser?.email || "",
-            receiverId: landlordFirebaseId,
-          })
-        }
+        onSendMessage={async (message) => {
+          if (!currentFirebaseId || !landlordFirebaseId || !chatId) {
+            console.error("Missing required IDs:", {
+              currentFirebaseId,
+              landlordFirebaseId,
+              chatId,
+            });
+            return;
+          }
+
+          try {
+            const messageData = {
+              text: message,
+              senderId: currentFirebaseId,
+              senderEmail: getAuth().currentUser?.email || "",
+              receiverId: landlordFirebaseId,
+              timestamp: new Date(),
+            };
+
+            await sendNewMessage(messageData);
+          } catch (error) {
+            console.error("Error sending message:", error);
+          }
+        }}
       />
     </SafeAreaView>
   );

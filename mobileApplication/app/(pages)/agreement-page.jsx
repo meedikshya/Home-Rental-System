@@ -9,6 +9,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Checkbox from "expo-checkbox";
@@ -17,6 +18,7 @@ import ApiHandler from "../../api/ApiHandler";
 const Agreement = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const router = useRouter();
   const {
     propertyId,
     landlordId,
@@ -165,16 +167,20 @@ const Agreement = () => {
   };
 
   const handleProceedPayment = () => {
-    navigation.navigate("Payment", {
-      propertyId,
-      landlordId,
-      bookingId,
-      renterId,
-      agreementId,
-      price,
-      address,
-      startDate: startDate.toISOString().split("T")[0],
-      endDate: endDate.toISOString().split("T")[0],
+    router.push({
+      pathname: "payment-page",
+      params: {
+        propertyId,
+        landlordId,
+        bookingId,
+        renterId,
+        agreementId,
+        price,
+        address,
+        startDate: startDate ? startDate.toISOString().split("T")[0] : null,
+        endDate: endDate ? endDate.toISOString().split("T")[0] : null,
+        landlordName,
+      },
     });
   };
 

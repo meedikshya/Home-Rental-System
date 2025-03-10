@@ -63,37 +63,43 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
 
   // Enhanced message sending with proper formatting
   const sendNewMessage = async (messageData) => {
-    if (!user) {
-      setError("User is not logged in");
+    if (!user || !chatId) {
+      setError("User is not logged in or chat ID is missing");
       return;
     }
 
     try {
-      // Handle both string and object message formats
-      const formattedMessage =
-        typeof messageData === "string" ? { text: messageData } : messageData;
+      console.log("Sending message:", messageData);
 
-      // Ensure required fields are present
-      const completeMessage = {
-        ...formattedMessage,
-        senderEmail: formattedMessage.senderEmail || user.email,
-        timestamp: formattedMessage.timestamp || new Date(),
-      };
+      // Send the message using updated function
+      await sendMessage(chatId, messageData, currentUserFirebaseId || user.uid);
 
-      // Send the message
-      await sendMessage(chatId, completeMessage, user.uid);
-
-      // Refresh messages if we have both user IDs
-      if (currentUserFirebaseId && partnerFirebaseId) {
-        const updatedMessages = await findMessagesBetweenUsers(
-          currentUserFirebaseId,
-          partnerFirebaseId
-        );
-        setMessages(updatedMessages);
-      }
+      // After sending, refresh messages
+      setTimeout(async () => {
+        if (currentUserFirebaseId && partnerFirebaseId) {
+          console.log(
+            "Refreshing messages between",
+            currentUserFirebaseId,
+            "and",
+            partnerFirebaseId
+          );
+          const updatedMessages = await findMessagesBetweenUsers(
+            currentUserFirebaseId,
+            partnerFirebaseId
+          );
+          if (updatedMessages && updatedMessages.length > 0) {
+            console.log(
+              "Found",
+              updatedMessages.length,
+              "messages after refresh"
+            );
+            setMessages(updatedMessages);
+          }
+        }
+      }, 500); // Small delay to ensure Firebase has processed the write
     } catch (err) {
       console.error("Error sending message:", err);
-      setError("Error sending message");
+      setError("Failed to send message");
     }
   };
 
