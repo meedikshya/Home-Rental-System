@@ -18,9 +18,14 @@ import {
   FaImages,
   FaCheckCircle,
   FaArrowLeft,
+  FaArrowRight,
+  FaExpand,
+  FaChevronLeft,
+  FaChevronRight,
 } from "react-icons/fa";
 import PropertyDetailsForm from "./PropertyDetailsForm.js";
 import PropertyImageUpload from "./PropertyImageUpload.js";
+import ImageSlider from "./Imageslider.js";
 
 const PropertyList = () => {
   const navigate = useNavigate();
@@ -35,6 +40,13 @@ const PropertyList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedProperty, setSelectedProperty] = useState(null);
+
+  // Image slider state
+  const [isImageSliderOpen, setIsImageSliderOpen] = useState(false);
+  const [currentPropertyImages, setCurrentPropertyImages] = useState([]);
+
+  // Track which image is currently displayed for each property
+  const [currentImageIndices, setCurrentImageIndices] = useState({});
 
   // Get user's landlord ID
   useEffect(() => {
@@ -108,43 +120,112 @@ const PropertyList = () => {
       if (imageResponse && imageResponse.length > 0) {
         const imageMap = {};
         const urls = {};
+        const initialIndices = {};
 
         // Group images by property ID and extract URLs in one pass
         imageResponse.forEach((img) => {
           const propertyId = img.propertyId;
 
-          // Store all images for reference (for counting etc.)
+          // Store all images for reference
           if (!imageMap[propertyId]) {
             imageMap[propertyId] = [];
+            initialIndices[propertyId] = 0; // Initialize current index
           }
           imageMap[propertyId].push(img);
+        });
 
-          // Only store the first image URL for each property
-          if (!urls[propertyId] && img.imageUrl) {
-            if (img.imageUrl.startsWith("http")) {
+        // Get first image URL for each property
+        Object.keys(imageMap).forEach((propertyId) => {
+          const firstImage = imageMap[propertyId][0];
+          if (firstImage?.imageUrl) {
+            if (firstImage.imageUrl.startsWith("http")) {
               // If it's a Cloudinary URL, optimize it
-              if (img.imageUrl.includes("cloudinary.com")) {
-                urls[propertyId] = img.imageUrl.replace(
+              if (firstImage.imageUrl.includes("cloudinary.com")) {
+                urls[propertyId] = firstImage.imageUrl.replace(
                   "/upload/",
                   "/upload/q_auto,f_auto,w_600/"
                 );
               } else {
                 // Any other HTTP URL (keep as is)
-                urls[propertyId] = img.imageUrl;
+                urls[propertyId] = firstImage.imageUrl;
               }
-            } else if (img.imageUrl.startsWith("data:image")) {
+            } else if (firstImage.imageUrl.startsWith("data:image")) {
               // It's already a complete data URL
-              urls[propertyId] = img.imageUrl;
+              urls[propertyId] = firstImage.imageUrl;
             }
           }
         });
 
         setPropertyImages(imageMap);
         setObjectUrls(urls);
+        setCurrentImageIndices(initialIndices);
       }
     } catch (err) {
       console.error("Error fetching property images:", err);
     }
+  };
+
+  // Process image URL (helper function)
+  const processImageUrl = (url) => {
+    if (!url) return null;
+
+    if (url.startsWith("http")) {
+      if (url.includes("cloudinary.com")) {
+        return url.replace("/upload/", "/upload/q_auto,f_auto,w_600/");
+      }
+      return url;
+    } else if (url.startsWith("data:image")) {
+      return url;
+    }
+
+    return null;
+  };
+
+  // Image navigation functions
+  const goToNextImage = (propertyId, e) => {
+    e.stopPropagation(); // Prevent opening the modal
+    e.preventDefault(); // Prevent any default behavior
+
+    const images = propertyImages[propertyId] || [];
+    if (images.length <= 1) return;
+
+    const currentIdx = currentImageIndices[propertyId] || 0;
+    const nextIdx = (currentIdx + 1) % images.length;
+
+    // Update current indices
+    setCurrentImageIndices((prev) => ({
+      ...prev,
+      [propertyId]: nextIdx,
+    }));
+
+    // Update displayed image
+    setObjectUrls((prev) => ({
+      ...prev,
+      [propertyId]: processImageUrl(images[nextIdx].imageUrl),
+    }));
+  };
+
+  const goToPrevImage = (propertyId, e) => {
+    e.stopPropagation(); // Prevent opening the modal
+    e.preventDefault(); // Prevent any default behavior
+
+    const images = propertyImages[propertyId] || [];
+    if (images.length <= 1) return;
+
+    const currentIdx = currentImageIndices[propertyId] || 0;
+    const prevIdx = (currentIdx - 1 + images.length) % images.length;
+
+    // Update current indices
+    setCurrentImageIndices((prev) => ({
+      ...prev,
+      [propertyId]: prevIdx,
+    }));
+
+    // Update displayed image
+    setObjectUrls((prev) => ({
+      ...prev,
+      [propertyId]: processImageUrl(images[prevIdx].imageUrl),
+    }));
   };
 
   // Delete property handler
@@ -218,6 +299,24 @@ const PropertyList = () => {
     if (step >= 1 && step <= 3) {
       setCurrentStep(step);
     }
+  };
+
+  // Open image slider with property images
+  const handleOpenImageSlider = (propertyId) => {
+    // Get images for this property
+    const images = propertyImages[propertyId] || [];
+    if (images.length > 0) {
+      setCurrentPropertyImages(images);
+      setIsImageSliderOpen(true);
+    } else {
+      toast.info("This property has no images to display.");
+    }
+  };
+
+  // Close image slider
+  const handleCloseImageSlider = () => {
+    setIsImageSliderOpen(false);
+    setCurrentPropertyImages([]);
   };
 
   // Loading state
@@ -417,6 +516,29 @@ const PropertyList = () => {
         </div>
       )}
 
+      {/* Full screen Image Slider Modal */}
+      {isImageSliderOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
+          <div className="w-full h-full max-w-6xl p-4">
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={handleCloseImageSlider}
+                className="bg-black bg-opacity-70 text-white p-2 rounded-full hover:bg-opacity-100 transition-opacity"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+
+            <ImageSlider
+              images={currentPropertyImages}
+              showThumbnails={true}
+              autoPlay={false}
+              showFullscreenButton={false}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex justify-between items-center">
         <h2 className="text-xl font-semibold text-gray-700">Your Properties</h2>
       </div>
@@ -425,16 +547,21 @@ const PropertyList = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {properties.map((property) => {
           const propertyId = property.propertyId;
-          const imageUrl = objectUrls[propertyId];
-          const hasMultipleImages = propertyImages[propertyId]?.length > 1;
+          const images = propertyImages[propertyId] || [];
+          const hasMultipleImages = images.length > 1;
+          const currentIdx = currentImageIndices[propertyId] || 0;
+          const imageUrl =
+            hasMultipleImages && images[currentIdx]?.imageUrl
+              ? images[currentIdx].imageUrl
+              : objectUrls[propertyId];
 
           return (
             <div
               key={propertyId}
               className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
             >
-              {/* Property image section */}
-              <div className="h-48 bg-gray-200 relative overflow-hidden">
+              {/* Property image section with slider controls */}
+              <div className="h-48 bg-gray-200 relative overflow-hidden group">
                 {imageUrl ? (
                   <div className="relative w-full h-full">
                     <img
@@ -443,12 +570,61 @@ const PropertyList = () => {
                       className="w-full h-full object-cover"
                       loading="lazy"
                     />
-
-                    {/* Image count badge if multiple images */}
+                    {/* Image slider navigation arrows - only show if multiple images */}
                     {hasMultipleImages && (
-                      <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1.5 py-0.5 rounded flex items-center">
-                        <FaImage className="mr-1" />
-                        {propertyImages[propertyId].length}
+                      <>
+                        {/* Left arrow */}
+                        <button
+                          onClick={(e) => goToPrevImage(propertyId, e)}
+                          className="absolute top-1/2 left-2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition opacity-0 group-hover:opacity-100"
+                          aria-label="Previous image"
+                        >
+                          <FaChevronLeft size={16} />
+                        </button>
+
+                        {/* Right arrow */}
+                        <button
+                          onClick={(e) => goToNextImage(propertyId, e)}
+                          className="absolute top-1/2 right-2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition opacity-0 group-hover:opacity-100"
+                          aria-label="Next image"
+                        >
+                          <FaChevronRight size={16} />
+                        </button>
+                      </>
+                    )}
+                    {/* Image count indicator */}
+                    {hasMultipleImages && (
+                      <div className="absolute bottom-2 left-0 right-0 flex justify-center space-x-2">
+                        {images.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+
+                              setCurrentImageIndices((prev) => ({
+                                ...prev,
+                                [propertyId]: index,
+                              }));
+
+                              // Update displayed image
+                              setObjectUrls((prev) => ({
+                                ...prev,
+                                [propertyId]: processImageUrl(
+                                  images[index].imageUrl
+                                ),
+                              }));
+                            }}
+                            className={`w-2 h-2 rounded-full transition-transform duration-200 ${
+                              currentIdx === index
+                                ? "bg-white scale-125"
+                                : "bg-white opacity-60 hover:opacity-80"
+                            }`}
+                            aria-label={`Image ${index + 1} of ${
+                              images.length
+                            }`}
+                          />
+                        ))}
                       </div>
                     )}
                   </div>
@@ -456,6 +632,16 @@ const PropertyList = () => {
                   <div className="flex items-center justify-center h-full flex-col">
                     <FaHome className="text-gray-400 text-5xl mb-2" />
                     <span className="text-gray-500 text-sm">No image</span>
+                  </div>
+                )}
+
+                {/* View all images overlay button */}
+                {hasMultipleImages && (
+                  <div
+                    onClick={() => handleOpenImageSlider(propertyId)}
+                    className="absolute top-2 right-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full cursor-pointer transition opacity-0 group-hover:opacity-100"
+                  >
+                    <FaImages size={14} />
                   </div>
                 )}
               </div>
