@@ -11,11 +11,13 @@
     "proxy": "https://localhost:5000"
   },
   "dependencies": {
+    "@cloudinary/url-gen": "^1.21.0",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.7.2",
     "browser-image-compression": "^2.0.2",
+    "cloudinary-react": "^1.8.1",
     "convert-base64-to-image": "^0.0.16",
     "firebase": "^10.12.2",
     "js-cookie": "^3.0.5",

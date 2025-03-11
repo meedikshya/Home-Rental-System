@@ -13,27 +13,28 @@ import {
   FaTrash,
   FaMapMarkerAlt,
   FaImage,
+  FaTimes,
+  FaCheck,
+  FaImages,
+  FaCheckCircle,
+  FaArrowLeft,
 } from "react-icons/fa";
+import PropertyDetailsForm from "./PropertyDetailsForm.js";
+import PropertyImageUpload from "./PropertyImageUpload.js";
 
 const PropertyList = () => {
+  const navigate = useNavigate();
   const [landlordId, setLandlordId] = useState(null);
   const [properties, setProperties] = useState([]);
   const [propertyImages, setPropertyImages] = useState({});
   const [objectUrls, setObjectUrls] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
 
-  // Clean up blob URLs on component unmount
-  useEffect(() => {
-    return () => {
-      Object.values(objectUrls).forEach((url) => {
-        if (url && typeof url === "string" && url.startsWith("blob:")) {
-          URL.revokeObjectURL(url);
-        }
-      });
-    };
-  }, [objectUrls]);
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [selectedProperty, setSelectedProperty] = useState(null);
 
   // Get user's landlord ID
   useEffect(() => {
@@ -95,7 +96,7 @@ const PropertyList = () => {
     }
   }, [landlordId]);
 
-  // Fetch images for all properties
+  // Optimized function to fetch and process images in one step
   const fetchPropertyImages = async (token) => {
     try {
       const imageResponse = await ApiHandler.get("/PropertyImages", {
@@ -106,54 +107,44 @@ const PropertyList = () => {
 
       if (imageResponse && imageResponse.length > 0) {
         const imageMap = {};
+        const urls = {};
 
-        // Group images by property ID
+        // Group images by property ID and extract URLs in one pass
         imageResponse.forEach((img) => {
-          if (!imageMap[img.propertyId]) {
-            imageMap[img.propertyId] = [];
+          const propertyId = img.propertyId;
+
+          // Store all images for reference (for counting etc.)
+          if (!imageMap[propertyId]) {
+            imageMap[propertyId] = [];
           }
-          imageMap[img.propertyId].push(img);
+          imageMap[propertyId].push(img);
+
+          // Only store the first image URL for each property
+          if (!urls[propertyId] && img.imageUrl) {
+            if (img.imageUrl.startsWith("http")) {
+              // If it's a Cloudinary URL, optimize it
+              if (img.imageUrl.includes("cloudinary.com")) {
+                urls[propertyId] = img.imageUrl.replace(
+                  "/upload/",
+                  "/upload/q_auto,f_auto,w_600/"
+                );
+              } else {
+                // Any other HTTP URL (keep as is)
+                urls[propertyId] = img.imageUrl;
+              }
+            } else if (img.imageUrl.startsWith("data:image")) {
+              // It's already a complete data URL
+              urls[propertyId] = img.imageUrl;
+            }
+          }
         });
 
         setPropertyImages(imageMap);
-        processImages(imageMap);
+        setObjectUrls(urls);
       }
     } catch (err) {
       console.error("Error fetching property images:", err);
     }
-  };
-
-  // Convert base64 strings to proper image URLs
-  const processImages = (imageMap) => {
-    const urls = {};
-
-    Object.entries(imageMap).forEach(([propertyId, images]) => {
-      if (images.length > 0) {
-        const imageData = images[0];
-        const imageString = imageData.imageUrl;
-
-        if (imageString) {
-          // Already a complete data URL
-          if (imageString.startsWith("data:image")) {
-            urls[propertyId] = imageString;
-          }
-          // Web URL (http/https)
-          else if (imageString.startsWith("http")) {
-            urls[propertyId] = imageString;
-          }
-          // Base64 JPEG data
-          else if (imageString.startsWith("/9j/")) {
-            urls[propertyId] = `data:image/jpeg;base64,${imageString}`;
-          }
-          // Other base64 data
-          else {
-            urls[propertyId] = `data:image/jpeg;base64,${imageString}`;
-          }
-        }
-      }
-    });
-
-    setObjectUrls(urls);
   };
 
   // Delete property handler
@@ -176,9 +167,57 @@ const PropertyList = () => {
     }
   };
 
-  // Navigate to edit property page
+  // Open edit modal
   const handleEditProperty = (propertyId) => {
-    navigate(`/landlord/property/edit/${propertyId}`);
+    const property = properties.find((p) => p.propertyId === propertyId);
+    if (property) {
+      setSelectedProperty(property);
+      setCurrentStep(1);
+      setIsModalOpen(true);
+    }
+  };
+
+  // Close modal and reset state
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setCurrentStep(1);
+    // Refresh properties data after edit
+    if (landlordId) {
+      const refreshData = async () => {
+        try {
+          const token = await FIREBASE_AUTH.currentUser.getIdToken(true);
+          const response = await ApiHandler.get(
+            `/Properties/Landlord/${landlordId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (response) {
+            setProperties(response || []);
+            fetchPropertyImages(token);
+          }
+        } catch (err) {
+          console.error("Error refreshing properties:", err);
+        }
+      };
+
+      refreshData();
+    }
+
+    // Reset after animation
+    setTimeout(() => {
+      setSelectedProperty(null);
+    }, 300);
+  };
+
+  // Handle step navigation
+  const handleStepChange = (step) => {
+    if (step >= 1 && step <= 3) {
+      setCurrentStep(step);
+    }
   };
 
   // Loading state
@@ -216,8 +255,8 @@ const PropertyList = () => {
         <p className="text-blue-600 mb-4">
           You haven't added any properties to your listing.
         </p>
-        <p className="text-gray-500">
-          Click the "Add New Property" button to get started.
+        <p className="text-gray-500 mb-4">
+          Click the "Add Property" button to get started.
         </p>
       </div>
     );
@@ -226,14 +265,160 @@ const PropertyList = () => {
   // Main property list
   return (
     <>
+      {/* Edit Property Modal */}
+      {isModalOpen && selectedProperty && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold text-gray-800">
+                Edit Property: {selectedProperty.title}
+              </h2>
+              <button
+                onClick={handleCloseModal}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+
+            {/* Steps Indicator */}
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-center mb-4">
+                <div className="flex items-center">
+                  {/* Step 1 Indicator */}
+                  <div
+                    className={`flex items-center justify-center w-12 h-12 rounded-full cursor-pointer
+                      ${currentStep >= 1 ? "bg-blue-500" : "bg-gray-300"}
+                      transition-colors duration-300`}
+                    onClick={() => handleStepChange(1)}
+                  >
+                    {currentStep > 1 ? (
+                      <FaCheck className="text-white text-xl" />
+                    ) : (
+                      <FaHome className="text-white text-xl" />
+                    )}
+                  </div>
+
+                  {/* Connector */}
+                  <div
+                    className={`h-1 w-32 mx-2 ${
+                      currentStep > 1 ? "bg-blue-500" : "bg-gray-300"
+                    } transition-colors duration-300`}
+                  />
+
+                  {/* Step 2 Indicator */}
+                  <div
+                    className={`flex items-center justify-center w-12 h-12 rounded-full cursor-pointer
+                      ${currentStep >= 2 ? "bg-blue-500" : "bg-gray-300"}
+                      transition-colors duration-300`}
+                    onClick={() => currentStep > 1 && handleStepChange(2)}
+                  >
+                    {currentStep > 2 ? (
+                      <FaCheck className="text-white text-xl" />
+                    ) : (
+                      <FaImages className="text-white text-xl" />
+                    )}
+                  </div>
+
+                  {/* Connector */}
+                  <div
+                    className={`h-1 w-32 mx-2 ${
+                      currentStep > 2 ? "bg-blue-500" : "bg-gray-300"
+                    } transition-colors duration-300`}
+                  />
+
+                  {/* Step 3 Indicator */}
+                  <div
+                    className={`flex items-center justify-center w-12 h-12 rounded-full
+                      ${currentStep === 3 ? "bg-blue-500" : "bg-gray-300"}
+                      transition-colors duration-300`}
+                  >
+                    <FaCheckCircle className="text-white text-xl" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Step Labels */}
+              <div className="flex justify-center text-sm">
+                <div
+                  className={`text-center mx-8 ${
+                    currentStep >= 1
+                      ? "text-blue-600 font-medium"
+                      : "text-gray-500"
+                  } transition-colors duration-300`}
+                >
+                  Edit Details
+                </div>
+                <div
+                  className={`text-center mx-8 ${
+                    currentStep >= 2
+                      ? "text-blue-600 font-medium"
+                      : "text-gray-500"
+                  } transition-colors duration-300`}
+                >
+                  Manage Images
+                </div>
+                <div
+                  className={`text-center mx-8 ${
+                    currentStep === 3
+                      ? "text-blue-600 font-medium"
+                      : "text-gray-500"
+                  } transition-colors duration-300`}
+                >
+                  Finish
+                </div>
+              </div>
+            </div>
+
+            {/* Content based on current step */}
+            <div className="p-4 overflow-y-auto">
+              {currentStep === 1 && (
+                <PropertyDetailsForm
+                  initialData={selectedProperty}
+                  propertyId={parseInt(selectedProperty.propertyId)}
+                  landlordId={landlordId}
+                  setCurrentStep={setCurrentStep}
+                  mode="edit"
+                />
+              )}
+
+              {currentStep === 2 && (
+                <PropertyImageUpload
+                  propertyId={parseInt(selectedProperty.propertyId)}
+                  setCurrentStep={setCurrentStep}
+                  onClose={null}
+                />
+              )}
+
+              {currentStep === 3 && (
+                <div className="text-center py-10 bg-white rounded-lg">
+                  <div className="bg-green-100 rounded-full w-20 h-20 mx-auto flex items-center justify-center mb-6">
+                    <FaCheckCircle className="text-green-600 text-4xl" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-green-600 mb-4">
+                    Success!
+                  </h2>
+                  <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                    Your property has been updated successfully. All details and
+                    images have been saved.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button
+                      onClick={handleCloseModal}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex justify-between items-center">
         <h2 className="text-xl font-semibold text-gray-700">Your Properties</h2>
-        <button
-          onClick={() => navigate("/landlord/property/add")}
-          className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 flex items-center"
-        >
-          <FaHome className="mr-1" /> Add Property
-        </button>
       </div>
 
       {/* Property grid */}
@@ -258,11 +443,6 @@ const PropertyList = () => {
                       className="w-full h-full object-cover"
                       loading="lazy"
                     />
-
-                    {/* Property ID badge */}
-                    <div className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1.5 py-0.5 rounded">
-                      ID: {propertyId}
-                    </div>
 
                     {/* Image count badge if multiple images */}
                     {hasMultipleImages && (
