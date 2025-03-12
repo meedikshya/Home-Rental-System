@@ -3,7 +3,7 @@ import { GiHamburgerMenu } from "react-icons/gi";
 import { FaUserCircle } from "react-icons/fa";
 import { MdLogout } from "react-icons/md";
 import { Link } from "react-router-dom";
-import logo from "../../assets/images/Logo.png"; // Correct import
+import logo from "../../assets/images/Logo.png";
 
 const Navbar = ({ user, logout }) => {
   const [isOpen, setIsOpen] = useState(false);
