@@ -4,9 +4,12 @@ import { MdSpaceDashboard, MdOutlineChat } from "react-icons/md";
 import { BsCalendarCheck } from "react-icons/bs";
 import { FaMoneyCheckAlt } from "react-icons/fa";
 import { HiMenuAlt3 } from "react-icons/hi";
+import { BsGraphUp } from "react-icons/bs";
+import { MdHolidayVillage } from "react-icons/md";
+import { HiDocumentText } from "react-icons/hi";
 import Logo from "../../assets/images/Logo.png";
 
-const Sidebar = () => {
+const SidebarAdmin = () => {
   const [open, setOpen] = useState(true);
   const location = useLocation();
 
@@ -27,13 +30,36 @@ const Sidebar = () => {
 
   const Menus = [
     {
-      title: "Property",
-      path: "/landlord/property",
+      title: "Dashboard",
+      path: "/admin/dashboard",
       icon: <MdSpaceDashboard />,
     },
-    { title: "Booking", path: "/landlord/booking", icon: <BsCalendarCheck /> },
-    { title: "Chat", path: "/landlord/chat", icon: <MdOutlineChat /> },
-    { title: "Payment", path: "/landlord/payment", icon: <FaMoneyCheckAlt /> },
+    {
+      title: "Analytics",
+      path: "/admin/analytics",
+      icon: <BsGraphUp />,
+    },
+    {
+      title: "Properties",
+      path: "/admin/properties",
+      icon: <MdHolidayVillage />,
+    },
+
+    {
+      title: "Bookings",
+      path: "/admin/bookings",
+      icon: <BsCalendarCheck />,
+    },
+    {
+      title: "Agreements",
+      path: "/admin/agreements",
+      icon: <HiDocumentText />,
+    },
+    {
+      title: "Payments",
+      path: "/admin/payments",
+      icon: <FaMoneyCheckAlt />,
+    },
   ];
 
   return (
@@ -74,7 +100,8 @@ const Sidebar = () => {
                 <li
                   className={`flex items-center gap-x-4 p-3 rounded-lg cursor-pointer transition-all duration-200 
                   ${
-                    location.pathname === menu.path
+                    location.pathname === menu.path ||
+                    location.pathname.startsWith(`${menu.path}/`)
                       ? "bg-blue-700"
                       : "hover:bg-blue-800"
                   }`}
@@ -101,4 +128,4 @@ const Sidebar = () => {
   );
 };
 
-export default Sidebar;
+export default SidebarAdmin;

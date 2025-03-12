@@ -75,13 +75,19 @@ export const LoginForm = () => {
       const userRole = getUserRoleFromToken(jwtToken);
       console.log("User role:", userRole);
 
-      if (userRole === "Renter") {
+      // Define allowed roles for this portal
+      const ALLOWED_ROLES = ["Landlord", "Admin"];
+
+      if (!ALLOWED_ROLES.includes(userRole)) {
+        // Handle unauthorized role (like Renter)
         await FIREBASE_AUTH.signOut();
 
         toast.error(
-          "This portal is for Landlords only. Renters please use the Renter app."
+          "This portal is for Landlords and Admins only. Please use the appropriate app for your role."
         );
-        setError("Access denied. This portal is for Landlords only.");
+        setError(
+          `Access denied. ${userRole} users are not allowed in this portal.`
+        );
 
         localStorage.removeItem("jwtToken");
         ApiHandler.removeToken();
@@ -90,8 +96,8 @@ export const LoginForm = () => {
         return;
       }
 
+      // Store authentication data
       localStorage.setItem("jwtToken", jwtToken);
-
       ApiHandler.setAuthToken(jwtToken);
 
       const userData = {
@@ -102,10 +108,12 @@ export const LoginForm = () => {
 
       toast.success(`Signed in successfully as ${userRole || "User"}`);
 
+      // Role-based redirection
       if (userRole === "Landlord") {
         navigate("/landlord/property");
       } else if (userRole === "Admin") {
-        navigate("/adminpanel");
+        // Updated to redirect to the new admin dashboard
+        navigate("/admin/dashboard");
       } else {
         navigate("/");
       }
