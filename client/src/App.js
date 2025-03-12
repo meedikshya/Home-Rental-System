@@ -3,9 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LoginForm } from "./pages/Login/LoginForm.js";
 import { RegisterForm } from "./pages/Signup/RegisterForm.js";
 import AdminPanel from "./pages/Admin/AdminPanel.js";
-import WelcomePage from "./pages/Home/WelcomePage.js";
 import UserInfo from "./pages/Signup/UserInfo.js";
-import Main from "./pages/Main/index.jsx";
 import Layout from "./components/Landlord/Layout.js";
 import Property from "./pages/Landlord/Property.js";
 import Home from "./pages/Landlord/Home.js";
@@ -88,10 +86,8 @@ function App() {
           path="/register"
           element={<RegisterForm register={register} />}
         />
-        <Route path="/home" element={<WelcomePage user={user} />} />
         <Route path="/adminpanel" element={<AdminPanel />} />
         <Route path="/userinfo/:userId" element={<UserInfo />} />
-        <Route path="/main" element={<Main />} />
         <Route
           path="/landlord/*"
           element={
