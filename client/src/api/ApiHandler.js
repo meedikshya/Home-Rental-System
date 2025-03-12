@@ -1,4 +1,6 @@
 import axios from "axios";
+import { getAuth, signOut } from "firebase/auth";
+import { toast } from "react-toastify";
 
 const BASE_URL = "http://localhost:8000/api";
 
@@ -11,10 +13,9 @@ class ApiHandler {
       },
     });
 
-    this.loadToken(); // Load token on initialization
+    this.loadToken();
   }
 
-  // Set JWT token in API headers
   setAuthToken(token) {
     if (token) {
       console.log("Setting token:", token);
@@ -25,7 +26,6 @@ class ApiHandler {
     }
   }
 
-  // Load token from localStorage and set it in headers
   loadToken() {
     try {
       const token = localStorage.getItem("jwtToken");
@@ -35,7 +35,6 @@ class ApiHandler {
     }
   }
 
-  // Save token to localStorage and update headers
   saveToken(token) {
     try {
       localStorage.setItem("jwtToken", token);
@@ -45,7 +44,6 @@ class ApiHandler {
     }
   }
 
-  // Remove token from localStorage and headers
   removeToken() {
     try {
       localStorage.removeItem("jwtToken");
@@ -55,7 +53,6 @@ class ApiHandler {
     }
   }
 
-  // GET request
   async get(endpoint, params = {}) {
     try {
       const response = await this.api.get(endpoint, { params });
@@ -65,7 +62,6 @@ class ApiHandler {
     }
   }
 
-  // POST request
   async post(endpoint, data) {
     try {
       const response = await this.api.post(endpoint, data);
@@ -75,7 +71,6 @@ class ApiHandler {
     }
   }
 
-  // PUT request
   async put(endpoint, data) {
     try {
       const response = await this.api.put(endpoint, data);
@@ -85,7 +80,6 @@ class ApiHandler {
     }
   }
 
-  // DELETE request
   async delete(endpoint) {
     try {
       const response = await this.api.delete(endpoint);
@@ -95,8 +89,28 @@ class ApiHandler {
     }
   }
 
-  // Handle errors
   handleError(error) {
+    if (error.response && error.response.status === 401) {
+      console.error("Unauthorized access (401). Token has expired.");
+
+      toast.error("Your session has expired. Please login again.", {
+        position: "top-center",
+        autoClose: 3000,
+      });
+
+      this.removeToken();
+      localStorage.removeItem("user");
+
+      const auth = getAuth();
+      signOut(auth).catch((err) => console.error("Error signing out:", err));
+
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1000);
+
+      return null;
+    }
+
     if (error.response) {
       console.error("API Error:", error.response.data);
     } else if (error.request) {

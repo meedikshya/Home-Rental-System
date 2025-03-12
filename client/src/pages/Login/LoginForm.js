@@ -71,8 +71,7 @@ export const LoginForm = () => {
       const userData = { email: userCredential.user.email };
       localStorage.setItem("user", JSON.stringify(userData));
 
-      // Navigate to home page (or tabs)
-      navigate("/landlord");
+      navigate("/landlord/property");
     } catch (error) {
       let errorMessage = "An unexpected error occurred.";
 

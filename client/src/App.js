@@ -16,6 +16,7 @@ import Payment from "./pages/Landlord/Payment.js";
 import AddPropertyDetails from "./components/property/PropertyDetailsForm.js";
 import AddPropertyForm from "./components/property/AddPropertyForm.js";
 import UploadPropertyImages from "./components/property/PropertyImageUpload.js";
+import SessionTimeoutProvider from "./hooks/sessionProvider.js";
 
 import { FIREBASE_AUTH } from "./services/Firebase-config.js";
 import {
@@ -94,22 +95,27 @@ function App() {
         <Route
           path="/landlord/*"
           element={
-            <Layout>
-              <Routes>
-                <Route path="property" element={<Property />} />
-                <Route path="booking" element={<Booking />} />
-                <Route path="chat" element={<Chat />} />
-                <Route path="chat/:chatId" element={<ChatPage />} />
-                <Route path="payment" element={<Payment />} />
-                <Route path="home" element={<Home />} />
-                <Route path="addproperty" element={<AddPropertyForm />} />
-                <Route path="/add-property" element={<AddPropertyDetails />} />
-                <Route
-                  path="upload-images/:propertyId"
-                  element={<UploadPropertyImages />}
-                />
-              </Routes>
-            </Layout>
+            <SessionTimeoutProvider>
+              <Layout>
+                <Routes>
+                  <Route path="property" element={<Property />} />
+                  <Route path="booking" element={<Booking />} />
+                  <Route path="chat" element={<Chat />} />
+                  <Route path="chat/:chatId" element={<ChatPage />} />
+                  <Route path="payment" element={<Payment />} />
+                  <Route path="home" element={<Home />} />
+                  <Route path="addproperty" element={<AddPropertyForm />} />
+                  <Route
+                    path="/add-property"
+                    element={<AddPropertyDetails />}
+                  />
+                  <Route
+                    path="upload-images/:propertyId"
+                    element={<UploadPropertyImages />}
+                  />
+                </Routes>
+              </Layout>
+            </SessionTimeoutProvider>
           }
         />
       </Routes>

@@ -13,7 +13,7 @@ const SignOut = () => {
       try {
         const response = await fetch("http://localhost:3000/api/auth/logout", {
           method: "POST",
-          credentials: "include", // Ensure cookies are sent with the request
+          credentials: "include",
         });
 
         if (response.ok) {
