@@ -5,6 +5,23 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
 import ApiHandler from "../../api/ApiHandler.js";
 
+const getUserRoleFromToken = (token) => {
+  if (!token) return null;
+
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload));
+
+    return (
+      decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] ||
+      null
+    );
+  } catch (error) {
+    console.error("Error parsing token:", error);
+    return null;
+  }
+};
+
 export const LoginForm = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -18,12 +35,14 @@ export const LoginForm = () => {
     navigate("/register");
   };
 
-  const handleSignin = async () => {
-    // Existing login logic...
+  const handleSignin = async (e) => {
+    if (e) e.preventDefault();
+
     setError("");
     setEmailError("");
     setPasswordError("");
 
+    // Validation
     if (!email.trim() || !password.trim()) {
       if (!email.trim()) setEmailError("Email is required.");
       if (!password.trim()) setPasswordError("Password is required.");
@@ -39,48 +58,70 @@ export const LoginForm = () => {
     setSubmitting(true);
 
     try {
-      // Firebase authentication - Sign in with email and password
       const userCredential = await signInWithEmailAndPassword(
         FIREBASE_AUTH,
         email,
         password
       );
 
-      // Get Firebase ID Token
-      const firebaseToken = await userCredential.user.getIdToken(true);
-
-      // Send email to backend for JWT
       const response = await ApiHandler.post("/auth/login", {
         Email: email,
         firebaseUId: userCredential.user.uid,
       });
 
-      // Get JWT from backend response
       const jwtToken = response.token;
 
-      // Store JWT token in localStorage
+      // Extract user role from JWT
+      const userRole = getUserRoleFromToken(jwtToken);
+      console.log("User role:", userRole);
+
+      if (userRole === "Renter") {
+        await FIREBASE_AUTH.signOut();
+
+        toast.error(
+          "This portal is for Landlords only. Renters please use the Renter app."
+        );
+        setError("Access denied. This portal is for Landlords only.");
+
+        localStorage.removeItem("jwtToken");
+        ApiHandler.removeToken();
+
+        setSubmitting(false);
+        return;
+      }
+
       localStorage.setItem("jwtToken", jwtToken);
 
-      // Set token for future API calls using ApiHandler
       ApiHandler.setAuthToken(jwtToken);
 
-      // Show success toast
-      toast.success("User signed in successfully");
-
-      // Save user details to local storage
-      const userData = { email: userCredential.user.email };
+      const userData = {
+        email: userCredential.user.email,
+        role: userRole,
+      };
       localStorage.setItem("user", JSON.stringify(userData));
 
-      navigate("/landlord/property");
+      toast.success(`Signed in successfully as ${userRole || "User"}`);
+
+      if (userRole === "Landlord") {
+        navigate("/landlord/property");
+      } else if (userRole === "Admin") {
+        navigate("/adminpanel");
+      } else {
+        navigate("/");
+      }
     } catch (error) {
       let errorMessage = "An unexpected error occurred.";
 
-      // Handle Firebase and API errors
       if (error.code) {
         if (error.code === "auth/wrong-password") {
           errorMessage = "Incorrect password.";
         } else if (error.code === "auth/user-not-found") {
           errorMessage = "User not found.";
+        } else if (error.code === "auth/too-many-requests") {
+          errorMessage =
+            "Too many failed login attempts. Please try again later.";
+        } else {
+          errorMessage = `Firebase error: ${error.message}`;
         }
       } else if (error.response) {
         errorMessage = error.response.data.message || errorMessage;
@@ -88,12 +129,11 @@ export const LoginForm = () => {
         errorMessage = "Network error. Please try again.";
       }
 
-      // Display error message
       setError(errorMessage);
       toast.error(`Login error: ${errorMessage}`);
 
-      // Ensure token is cleared if any error occurs
-      ApiHandler.setAuthToken(null);
+      ApiHandler.removeToken();
+      localStorage.removeItem("jwtToken");
     } finally {
       setSubmitting(false);
     }
@@ -105,10 +145,14 @@ export const LoginForm = () => {
         <h1 className="px-10 py-8 text-2xl font-semibold text-center border-b">
           Sign in to your account
         </h1>
-        <div className="bg-white px-10 py-10">
+        <form className="bg-white px-10 py-10" onSubmit={handleSignin}>
           <div>
-            <label className="text-sm font-medium">Email address</label>
+            <label className="text-sm font-medium" htmlFor="email">
+              Email address
+            </label>
             <input
+              id="email"
+              type="email"
               className={`w-full border-2 border-gray-100 p-2 mt-3 mb-4 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
                 emailError && "border-red-500"
               }`}
@@ -118,24 +162,29 @@ export const LoginForm = () => {
                 setEmailError("");
               }}
               value={email}
+              required
             />
             {emailError && (
               <div className="text-red-500 mt-1">{emailError}</div>
             )}
           </div>
           <div>
-            <label className="text-sm font-medium">Password</label>
+            <label className="text-sm font-medium" htmlFor="password">
+              Password
+            </label>
             <input
+              id="password"
+              type="password"
               className={`w-full border-2 border-gray-100 p-2 mt-3 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
                 passwordError && "border-red-500"
               }`}
               placeholder="password"
-              type="password"
               onChange={(event) => {
                 setPassword(event.target.value);
                 setPasswordError("");
               }}
               value={password}
+              required
             />
             {passwordError && (
               <div className="text-red-500 mt-1">{passwordError}</div>
@@ -149,13 +198,13 @@ export const LoginForm = () => {
                 Remember me
               </label>
             </div>
-            <button className="font-bold text-sm text-indigo-600">
+            <button type="button" className="font-bold text-sm text-indigo-600">
               Forgot Password?
             </button>
           </div>
           <div className="mt-8 flex flex-col gap-y-4">
             <button
-              onClick={handleSignin}
+              type="submit"
               className="py-2 bg-indigo-600 text-white text-lg rounded-md hover:bg-indigo-700 transition-colors"
               disabled={isSubmitting}
             >
@@ -166,6 +215,7 @@ export const LoginForm = () => {
             <p>
               Don't have an account?{" "}
               <button
+                type="button"
                 onClick={handleRegister}
                 className="font-bold text-sm text-indigo-600 hover:text-indigo-800"
               >
@@ -173,7 +223,7 @@ export const LoginForm = () => {
               </button>
             </p>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

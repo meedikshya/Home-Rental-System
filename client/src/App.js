@@ -15,6 +15,7 @@ import AddPropertyDetails from "./components/property/PropertyDetailsForm.js";
 import AddPropertyForm from "./components/property/AddPropertyForm.js";
 import UploadPropertyImages from "./components/property/PropertyImageUpload.js";
 import SessionTimeoutProvider from "./hooks/sessionProvider.js";
+import RoleProtectedRoute from "./components/ProtectedRoutes/RoleProtectedRoutes.js";
 
 import { FIREBASE_AUTH } from "./services/Firebase-config.js";
 import {
@@ -91,7 +92,7 @@ function App() {
         <Route
           path="/landlord/*"
           element={
-            <SessionTimeoutProvider>
+            <RoleProtectedRoute requiredRole="Landlord">
               <Layout>
                 <Routes>
                   <Route path="property" element={<Property />} />
@@ -111,7 +112,7 @@ function App() {
                   />
                 </Routes>
               </Layout>
-            </SessionTimeoutProvider>
+            </RoleProtectedRoute>
           }
         />
       </Routes>

@@ -20,11 +20,9 @@ export const RegisterForm = () => {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    // Reset errors
     setEmailError("");
     setPasswordError("");
 
-    // Input validation
     if (!registerEmail.trim() || !registerPassword.trim()) {
       if (!registerEmail.trim()) setEmailError("Email is required.");
       if (!registerPassword.trim()) setPasswordError("Password is required.");
@@ -37,7 +35,6 @@ export const RegisterForm = () => {
       return;
     }
 
-    // Password strength validation
     if (registerPassword.length < 6) {
       setPasswordError("Password must be at least 6 characters long.");
       return;
@@ -46,7 +43,6 @@ export const RegisterForm = () => {
     setSubmitting(true);
 
     try {
-      // Firebase authentication
       const userCredential = await createUserWithEmailAndPassword(
         FIREBASE_AUTH,
         registerEmail,
@@ -56,7 +52,6 @@ export const RegisterForm = () => {
       const firebaseUserId = userCredential.user.uid;
       console.log("Firebase user created with ID:", firebaseUserId);
 
-      // Save user information in Firestore
       await setDoc(doc(FIREBASE_DB, "users", firebaseUserId), {
         email: registerEmail,
         userRole: "Landlord",
@@ -65,10 +60,9 @@ export const RegisterForm = () => {
       });
       console.log("User data saved to Firestore");
 
-      // Send additional user data to your backend API
       const response = await ApiHandler.post("/Users", {
         email: registerEmail,
-        passwordHash: registerPassword, // Note: Consider not sending plaintext password
+        passwordHash: registerPassword,
         userRole: "Landlord",
         firebaseUId: firebaseUserId,
       });
@@ -86,7 +80,6 @@ export const RegisterForm = () => {
     } catch (error) {
       console.error("Error registering user:", error);
 
-      // Handle specific Firebase errors
       if (error.code === "auth/email-already-in-use") {
         setEmailError("This email is already registered.");
         toast.error("This email address is already in use.");
