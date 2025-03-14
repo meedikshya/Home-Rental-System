@@ -1,24 +1,28 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   Image,
   Alert,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Checkbox from "expo-checkbox";
 import ApiHandler from "../../api/ApiHandler";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import
 
 const Agreement = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const router = useRouter();
+  const insets = useSafeAreaInsets(); // Get the safe area insets
   const {
     propertyId,
     landlordId,
@@ -43,71 +47,143 @@ const Agreement = () => {
   const [isApproved, setIsApproved] = useState(false);
   const [agreementExists, setAgreementExists] = useState(false);
   const [agreementId, setAgreementId] = useState(null);
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchRenterName = async () => {
-      try {
-        const userDetailsResponse = await ApiHandler.get(
-          `/UserDetails/userId/${renterId}`
-        );
-        if (userDetailsResponse) {
-          const { firstName, lastName } = userDetailsResponse;
-          const fullName = `${firstName} ${lastName}`;
-          setRenterName(fullName);
+  // Fetch renter name
+  const fetchRenterName = async () => {
+    try {
+      const userDetailsResponse = await ApiHandler.get(
+        `/UserDetails/userId/${renterId}`
+      );
+      if (userDetailsResponse) {
+        const { firstName, lastName } = userDetailsResponse;
+        const fullName = `${firstName} ${lastName}`;
+        setRenterName(fullName);
+      }
+    } catch (error) {
+      console.error("Error fetching renter name:", error);
+    }
+  };
+
+  // Fetch agreement details
+  const fetchAgreementDetails = async () => {
+    try {
+      console.log(`Fetching agreement details for booking: ${bookingId}`);
+      const response = await ApiHandler.get(
+        `/Agreements/byBookingId/${bookingId}`
+      );
+
+      if (response) {
+        console.log("Agreement found:", response);
+        setStartDate(new Date(response.startDate));
+        setEndDate(new Date(response.endDate));
+        setIsAgreed(true);
+        setAgreementExists(true);
+        setAgreementId(response.agreementId);
+
+        // Check agreement status
+        const status = response.status;
+        setIsPending(status === "Pending");
+        setIsApproved(status === "Approved");
+
+        // If agreement is approved, check payment status
+        if (status === "Approved") {
+          await checkPaymentStatus(response.agreementId);
         }
-      } catch (error) {
-        console.error("Error fetching renter name:", error);
+        return true;
+      } else {
+        setStartDate(null);
+        setEndDate(null);
+        setIsAgreed(false);
+        setIsPending(false);
+        setIsApproved(false);
+        setAgreementExists(false);
+        return false;
+      }
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        setStartDate(null);
+        setEndDate(null);
+        setIsAgreed(false);
+        setIsPending(false);
+        setIsApproved(false);
+        setAgreementExists(false);
+      } else {
+        console.error("Error fetching agreement details:", error);
+      }
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Check if payment has been completed
+  const checkPaymentStatus = async (id) => {
+    try {
+      setIsCheckingPayment(true);
+      console.log("Checking payment status for agreement:", id);
+
+      const data = await ApiHandler.get(`/Payments/byAgreementId/${id}`, {
+        status: "Completed",
+      });
+
+      console.log("Payment data received:", data);
+
+      // If there's at least one payment with "Completed" status
+      if (data && data.length > 0) {
+        console.log("Found completed payment:", data[0]);
+        setIsPaymentCompleted(true);
+        return true;
+      } else {
+        setIsPaymentCompleted(false);
+        return false;
+      }
+    } catch (error) {
+      console.error("Payment status check error:", error);
+      setIsPaymentCompleted(false);
+      return false;
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  };
+
+  // Load initial data
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (renterId) {
+        await fetchRenterName();
+      }
+      if (bookingId) {
+        await fetchAgreementDetails();
       }
     };
 
-    if (renterId) {
-      fetchRenterName();
+    loadInitialData();
+  }, [renterId, bookingId]);
+
+  // Refresh all data
+  const refreshAllData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchRenterName();
+      await fetchAgreementDetails();
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    } finally {
+      setRefreshing(false);
     }
-  }, [renterId]);
+  }, [renterId, bookingId]);
 
-  useEffect(() => {
-    const fetchAgreementDetails = async () => {
-      try {
-        const response = await ApiHandler.get(
-          `/Agreements/byBookingId/${bookingId}`
-        );
-        if (response) {
-          setStartDate(new Date(response.startDate));
-          setEndDate(new Date(response.endDate));
-          setIsAgreed(true);
-          setAgreementExists(true);
-          setAgreementId(response.agreementId);
-
-          // Check agreement status
-          const status = response.status;
-          setIsPending(status === "Pending");
-          setIsApproved(status === "Approved");
-        } else {
-          setStartDate(null);
-          setEndDate(null);
-          setIsAgreed(false);
-          setIsPending(false);
-          setIsApproved(false);
-          setAgreementExists(false);
-        }
-      } catch (error) {
-        if (error.response && error.response.status === 404) {
-          setStartDate(null);
-          setEndDate(null);
-          setIsAgreed(false);
-          setIsPending(false);
-          setIsApproved(false);
-          setAgreementExists(false);
-        } else {
-          console.error("Error fetching agreement details:", error);
-        }
-      }
-    };
-
-    if (bookingId) {
-      fetchAgreementDetails();
-    }
-  }, [bookingId]);
+  // Auto-refresh on focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log("Agreement page focused, refreshing data...");
+      refreshAllData();
+    }, [refreshAllData])
+  );
 
   const handleConfirmStart = (date) => {
     setStartDate(date);
@@ -160,6 +236,8 @@ const Agreement = () => {
         "Request Sent",
         "The request will be processed after the landlord approves your request."
       );
+      // Refresh data after creating agreement
+      refreshAllData();
     } catch (error) {
       console.error("Error creating agreement:", error);
       Alert.alert("Error", "There was an error processing your request.");
@@ -175,7 +253,7 @@ const Agreement = () => {
         bookingId,
         renterId,
         agreementId,
-        price,
+        price, // Use actual price instead of temPrice
         address,
         startDate: startDate ? startDate.toISOString().split("T")[0] : null,
         endDate: endDate ? endDate.toISOString().split("T")[0] : null,
@@ -184,16 +262,45 @@ const Agreement = () => {
     });
   };
 
+  // Format date function
+  const formatDate = (date) => {
+    if (!date) return "________";
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  if (loading) {
+    return (
+      <View
+        className="flex-1 bg-white justify-center items-center"
+        style={{ paddingTop: insets.top }}
+      >
+        <ActivityIndicator size="large" color="#20319D" />
+        <Text className="mt-4 text-gray-600">Loading agreement details...</Text>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-gray-100">
-      <View className="flex-row items-center p-4 bg-white shadow-md">
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="black" />
+    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
+      <View className="flex-row items-center py-4 px-3 border-b border-gray-200 bg-white">
+        <TouchableOpacity onPress={() => navigation.goBack()} className="p-1">
+          <Ionicons name="arrow-back" size={24} color="#20319D" />
         </TouchableOpacity>
-        <Text className="text-2xl font-semibold ml-4">Agreement</Text>
+        <Text className="text-lg font-semibold text-gray-800 ml-3">
+          Agreement
+        </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refreshAllData} />
+        }
+      >
         <View className="bg-white p-4 rounded-lg shadow-lg flex-row">
           <Image
             source={{ uri: image }}
@@ -231,47 +338,11 @@ const Agreement = () => {
         </View>
 
         {agreementExists ? (
-          <View className="mt-6 bg-white p-4 rounded-lg shadow-lg">
-            <Text className="text-xl font-semibold mb-4">Lease Agreement</Text>
-            <Text className="text-base text-gray-600 mb-2">
-              This agreement is made between the landlord and tenant for the
-              rental property located at:
-            </Text>
-            {address && (
-              <Text className="text-base font-semibold text-gray-800">
-                {address}
-              </Text>
-            )}
-            <Text className="text-base text-gray-600 mb-2">
-              The lease term will begin on{" "}
-              <Text className="font-bold text-black">
-                {startDate ? startDate.toDateString() : "________"}
-              </Text>{" "}
-              and end on{" "}
-              <Text className="font-bold text-black">
-                {endDate ? endDate.toDateString() : "________"}
-              </Text>
-              .
-            </Text>
-            <Text className="text-base text-gray-600 mb-2">
-              Landlord:{" "}
-              <Text className="font-bold text-black">{landlordName}</Text>
-            </Text>
-            <Text className="text-base text-gray-600 mb-2">
-              Renter: <Text className="font-bold text-black">{renterName}</Text>
-            </Text>
-            <Text className="text-base text-gray-600">
-              Rent amount:{" "}
-              <Text className="font-bold text-black">
-                Rs. {price} per month
-              </Text>
-              .
-            </Text>
-
-            {/* Status Badge */}
-            <View className="mt-4 mb-4">
+          <>
+            {/* Status badges */}
+            <View className="flex-row flex-wrap gap-2 mt-4">
               <View
-                className={`py-1 px-3 rounded-full self-start ${
+                className={`py-1 px-3 rounded-full ${
                   isPending
                     ? "bg-yellow-200"
                     : isApproved
@@ -295,13 +366,122 @@ const Agreement = () => {
                     : "Status Unknown"}
                 </Text>
               </View>
+
+              {isApproved && isPaymentCompleted && (
+                <View className="py-1 px-3 rounded-full bg-blue-200">
+                  <Text className="text-blue-800">Payment Completed</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Styled Agreement Document */}
+            <View className="mt-4 bg-white border border-gray-300 rounded-lg overflow-hidden shadow-lg">
+              {/* Agreement Header */}
+              <View className="bg-gray-50 p-4 border-b border-gray-200">
+                <Text className="text-xl font-bold text-center text-gray-800">
+                  LEASE AGREEMENT
+                </Text>
+              </View>
+
+              {/* Agreement Body */}
+              <View className="p-6 bg-white">
+                <Text className="text-base leading-relaxed text-gray-700">
+                  This agreement is made between the landlord and tenant for the
+                  rental property located at:
+                </Text>
+
+                <Text className="text-base font-semibold my-2 text-center">
+                  {address}
+                </Text>
+
+                <View className="my-4 border-t border-gray-200 pt-4">
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="calendar" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Lease Period:</Text>{" "}
+                      {formatDate(startDate)} to {formatDate(endDate)}
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="person" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Landlord:</Text>{" "}
+                      {landlordName}
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="person" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Renter:</Text>{" "}
+                      {renterName}
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="cash" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Rent Amount:</Text> Rs.{" "}
+                      {price} per month
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Agreement Terms */}
+                <View className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
+                  <Text className="font-semibold mb-2">Agreement Terms:</Text>
+                  <View className="ml-2">
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The tenant will pay the rent amount on the 1st of each
+                      month.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The tenant will maintain the property in good condition.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The tenant will not sublease the property without the
+                      landlord's permission.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The landlord will be responsible for major repairs.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The landlord will provide notice before visiting the
+                      property.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • Either party may terminate this agreement with 30 days'
+                      notice.
+                    </Text>
+                    <Text className="text-sm text-gray-700">
+                      • A security deposit equal to one month's rent is due
+                      before moving in.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Agreement Footer */}
+              <View className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex-row justify-between">
+                <View>
+                  <Text className="text-xs text-gray-500">Document ID:</Text>
+                  <Text className="text-sm font-medium">{agreementId}</Text>
+                </View>
+                <View>
+                  <Text className="text-xs text-gray-500">Date Signed:</Text>
+                  <Text className="text-sm font-medium">
+                    {new Date().toLocaleDateString()}
+                  </Text>
+                </View>
+              </View>
             </View>
 
             {/* Action Button */}
-            <View className="mt-4 w-full">
+            <View className="mt-6 mb-8 w-full">
               {isPending ? (
                 <TouchableOpacity
-                  className="p-3 rounded-lg w-full bg-gray-400"
+                  className="p-4 rounded-lg w-full bg-gray-400"
                   disabled={true}
                 >
                   <Text className="text-white text-lg font-semibold text-center">
@@ -309,17 +489,25 @@ const Agreement = () => {
                   </Text>
                 </TouchableOpacity>
               ) : isApproved ? (
-                <TouchableOpacity
-                  className="p-3 rounded-lg w-full bg-green-500"
-                  onPress={handleProceedPayment}
-                >
-                  <Text className="text-white text-lg font-semibold text-center">
-                    Proceed to Payment
-                  </Text>
-                </TouchableOpacity>
+                isCheckingPayment ? (
+                  <View className="p-4 rounded-lg w-full bg-gray-100 items-center">
+                    <ActivityIndicator size="small" color="#20319D" />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    className="p-4 rounded-lg w-full bg-[#20319D]"
+                    onPress={handleProceedPayment}
+                  >
+                    <Text className="text-white text-lg font-semibold text-center">
+                      {isPaymentCompleted
+                        ? "View Payment Details"
+                        : "Proceed to Payment"}
+                    </Text>
+                  </TouchableOpacity>
+                )
               ) : (
                 <TouchableOpacity
-                  className="p-3 rounded-lg w-full bg-[#20319D]"
+                  className="p-4 rounded-lg w-full bg-[#20319D]"
                   onPress={handleProceedBooking}
                 >
                   <Text className="text-white text-lg font-semibold text-center">
@@ -328,10 +516,11 @@ const Agreement = () => {
                 </TouchableOpacity>
               )}
             </View>
-          </View>
+          </>
         ) : (
-          /* Rest of your existing code for new agreements */
           <>
+            {/* Your existing code for new agreement creation */}
+            {/* ... */}
             <View className="mt-6 bg-white p-4 rounded-lg shadow-lg">
               <Text className="text-gray-600 text-base mb-2">
                 Note: Lease period must be at least 3 months.
@@ -382,45 +571,92 @@ const Agreement = () => {
               />
             </View>
 
-            <View className="mt-6 bg-white p-4 rounded-lg shadow-lg">
-              <Text className="text-xl font-semibold mb-4">
-                Lease Agreement
-              </Text>
-              <Text className="text-base text-gray-600 mb-2">
-                This agreement is made between the landlord and tenant for the
-                rental property located at:
-              </Text>
-              {address && (
-                <Text className="text-base font-semibold text-gray-800">
+            {/* New Agreement Paper */}
+            <View className="mt-6 bg-white border border-gray-300 rounded-lg overflow-hidden shadow-lg">
+              {/* Agreement Header */}
+              <View className="bg-gray-50 p-4 border-b border-gray-200">
+                <Text className="text-xl font-bold text-center text-gray-800">
+                  LEASE AGREEMENT
+                </Text>
+              </View>
+
+              <View className="p-6">
+                <Text className="text-base leading-relaxed text-gray-700">
+                  This agreement is made between the landlord and tenant for the
+                  rental property located at:
+                </Text>
+
+                <Text className="text-base font-semibold my-2 text-center">
                   {address}
                 </Text>
-              )}
-              <Text className="text-base text-gray-600 mb-2">
-                The lease term will begin on{" "}
-                <Text className="font-bold text-black">
-                  {startDate ? startDate.toDateString() : "________"}
-                </Text>{" "}
-                and end on{" "}
-                <Text className="font-bold text-black">
-                  {endDate ? endDate.toDateString() : "________"}
-                </Text>
-                .
-              </Text>
-              <Text className="text-base text-gray-600 mb-2">
-                Landlord:{" "}
-                <Text className="font-bold text-black">{landlordName}</Text>
-              </Text>
-              <Text className="text-base text-gray-600 mb-2">
-                Renter:{" "}
-                <Text className="font-bold text-black">{renterName}</Text>
-              </Text>
-              <Text className="text-base text-gray-600">
-                Rent amount:{" "}
-                <Text className="font-bold text-black">
-                  Rs. {price} per month
-                </Text>
-                .
-              </Text>
+
+                <View className="my-4 border-t border-gray-200 pt-4">
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="calendar" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Lease Period:</Text>{" "}
+                      {formatDate(startDate)} to {formatDate(endDate)}
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="person" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Landlord:</Text>{" "}
+                      {landlordName}
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="person" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Renter:</Text>{" "}
+                      {renterName}
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="cash" size={18} color="#666" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      <Text className="font-semibold">Rent Amount:</Text> Rs.{" "}
+                      {price} per month
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Agreement Terms */}
+                <View className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
+                  <Text className="font-semibold mb-2">Agreement Terms:</Text>
+                  <View className="ml-2">
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The tenant will pay the rent amount on the 1st of each
+                      month.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The tenant will maintain the property in good condition.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The tenant will not sublease the property without the
+                      landlord's permission.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The landlord will be responsible for major repairs.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • The landlord will provide notice before visiting the
+                      property.
+                    </Text>
+                    <Text className="text-sm text-gray-700 mb-1">
+                      • Either party may terminate this agreement with 30 days'
+                      notice.
+                    </Text>
+                    <Text className="text-sm text-gray-700">
+                      • A security deposit equal to one month's rent is due
+                      before moving in.
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
 
             <View className="mt-6 bg-white p-4 rounded-lg shadow-lg flex-row items-center">
@@ -434,9 +670,9 @@ const Agreement = () => {
               </Text>
             </View>
 
-            <View className="mt-4 w-full">
+            <View className="mt-6 mb-8 w-full">
               <TouchableOpacity
-                className={`p-3 rounded-lg w-full ${
+                className={`p-4 rounded-lg w-full ${
                   isPending ? "bg-gray-400" : "bg-[#20319D]"
                 }`}
                 onPress={handleProceedBooking}
@@ -450,7 +686,7 @@ const Agreement = () => {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 

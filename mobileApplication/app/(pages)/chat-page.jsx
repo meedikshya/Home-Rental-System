@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   FlatList,
   ActivityIndicator,
   TouchableOpacity,
+  Image,
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,10 +13,12 @@ import useChat from "../../hooks/useChat";
 import MessageInput from "../../components/ui/MessageInput";
 import { getAuth } from "firebase/auth";
 import ApiHandler from "../../api/ApiHandler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const Chat = () => {
   const route = useRoute();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const {
     landlordId,
     landlordName,
@@ -30,7 +32,6 @@ const Chat = () => {
     initialLandlordFirebaseId
   );
 
-  // Fetch current user ID and Firebase ID
   useEffect(() => {
     const fetchCurrentUser = async () => {
       try {
@@ -54,11 +55,10 @@ const Chat = () => {
     fetchCurrentUser();
   }, []);
 
-  // Fetch landlord's Firebase ID if not provided
   useEffect(() => {
     const fetchLandlordFirebaseId = async () => {
       if (initialLandlordFirebaseId) {
-        return; // Already have it from params
+        return;
       }
 
       try {
@@ -78,113 +78,85 @@ const Chat = () => {
     }
   }, [landlordId, initialLandlordFirebaseId]);
 
-  // Generate chat ID using database IDs for Firebase path
   const chatId =
     currentUserId && landlordId ? `chat_${landlordId}_${currentUserId}` : null;
 
-  // Use the enhanced useChat hook with all parameters for complete message fetching
   const { messages, loading, error, sendNewMessage } = useChat(
     chatId,
     currentFirebaseId,
     landlordFirebaseId
   );
 
-  // Function to check if a message is from current user
   const isFromCurrentUser = (message) => {
     if (!message || !currentFirebaseId) return false;
-
-    if (message.senderId === currentFirebaseId) return true;
-
-    // Also check nested structure
-    if (message.text && typeof message.text === "object") {
-      if (
-        message.text.senderId === currentFirebaseId ||
-        String(message.text.senderId) === String(currentUserId)
-      ) {
-        return true;
-      }
-    }
-
-    return false;
+    return message.senderId === currentFirebaseId;
   };
 
-  // Function to extract message text regardless of format
   const getMessageText = (message) => {
     if (!message) return "No message";
-
-    // Direct string
     if (typeof message.text === "string") {
       return message.text;
     }
-
-    // Nested object
     if (message.text && typeof message.text === "object" && message.text.text) {
       return message.text.text;
     }
-
-    // Other possible fields
     if (message.body) return message.body;
     if (message.content) return message.content;
-
     return "Message content unavailable";
   };
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
-        <ActivityIndicator size="large" color="#1DA1F2" />
-      </SafeAreaView>
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#20319D" />
+      </View>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
-        <Text className="text-center text-red-500 text-lg">Error: {error}</Text>
-      </SafeAreaView>
+      <View className="flex-1 justify-center items-center bg-white">
+        <Text className="text-red-500">Error: {error}</Text>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-blue-50">
+    <View className="flex-1 bg-white">
       {/* Chat Header */}
-      <View className="p-4 bg-blue-500 flex-row items-center">
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+      <View
+        className="bg-[#20319D] flex-row items-center p-4"
+        style={{ paddingTop: insets.top }}
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} className="mr-3">
+          <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
-        <Text className="text-2xl font-bold text-white ml-4">
-          Chat with {landlordName}
-        </Text>
+        <Text className="text-white text-lg font-semibold">{landlordName}</Text>
       </View>
 
       {/* Messages List */}
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id || Math.random().toString()}
-        contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 20 }}
+        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 10 }}
         renderItem={({ item }) => (
           <View
             className={`p-4 my-2 rounded-lg max-w-[75%] ${
               isFromCurrentUser(item)
-                ? "self-end bg-blue-100"
-                : "self-start bg-white border border-gray-200"
+                ? "bg-sky-100 ml-auto"
+                : "bg-gray-100 mr-auto"
             }`}
           >
-            <Text className="text-sm text-gray-800">
-              {getMessageText(item)}
-            </Text>
-            <View className="flex-row justify-between mt-1">
-              <Text className="text-xs text-gray-500">
+            <Text className="text-black">{getMessageText(item)}</Text>
+            <View className="flex-row justify-between mt-2">
+              <Text className="text-gray-500 text-xs">
                 {isFromCurrentUser(item) ? renterName : landlordName}
               </Text>
-              <Text className="text-xs text-gray-500">
+              <Text className="text-gray-500 text-xs">
                 {item.timestamp?.seconds
                   ? new Date(item.timestamp.seconds * 1000).toLocaleTimeString(
                       [],
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
+                      { hour: "2-digit", minute: "2-digit" }
                     )
                   : item.timestamp instanceof Date
                   ? item.timestamp.toLocaleTimeString([], {
@@ -200,33 +172,35 @@ const Chat = () => {
       />
 
       {/* Message Input */}
-      <MessageInput
-        onSendMessage={async (message) => {
-          if (!currentFirebaseId || !landlordFirebaseId || !chatId) {
-            console.error("Missing required IDs:", {
-              currentFirebaseId,
-              landlordFirebaseId,
-              chatId,
-            });
-            return;
-          }
+      <View className="p-3">
+        <MessageInput
+          onSendMessage={async (message) => {
+            if (!currentFirebaseId || !landlordFirebaseId || !chatId) {
+              console.error("Missing required IDs:", {
+                currentFirebaseId,
+                landlordFirebaseId,
+                chatId,
+              });
+              return;
+            }
 
-          try {
-            const messageData = {
-              text: message,
-              senderId: currentFirebaseId,
-              senderEmail: getAuth().currentUser?.email || "",
-              receiverId: landlordFirebaseId,
-              timestamp: new Date(),
-            };
+            try {
+              const messageData = {
+                text: message,
+                senderId: currentFirebaseId,
+                senderEmail: getAuth().currentUser?.email || "",
+                receiverId: landlordFirebaseId,
+                timestamp: new Date(),
+              };
 
-            await sendNewMessage(messageData);
-          } catch (error) {
-            console.error("Error sending message:", error);
-          }
-        }}
-      />
-    </SafeAreaView>
+              await sendNewMessage(messageData);
+            } catch (error) {
+              console.error("Error sending message:", error);
+            }
+          }}
+        />
+      </View>
+    </View>
   );
 };
 

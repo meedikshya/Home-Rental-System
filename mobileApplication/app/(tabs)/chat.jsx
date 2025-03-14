@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { getAssociatedUsers } from "../../firebaseConfig";
 import { getUserDataFromFirebaseId } from "../../context/AuthContext";
 import ApiHandler from "../../api/ApiHandler";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import SafeAreaInsets
 
 const ChatList = () => {
   const router = useRouter();
@@ -20,6 +21,7 @@ const ChatList = () => {
   const [chatUsers, setChatUsers] = useState([]); // Array of objects: { firebaseId, userId, fullName }
   const [renterName, setRenterName] = useState("");
   const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets(); // Get the safe area insets
 
   // Fetch current user's Firebase ID
   useEffect(() => {
@@ -123,12 +125,12 @@ const ChatList = () => {
   };
 
   return (
-    <View className="flex-1 bg-blue-50 p-4">
-      <Text className="text-2xl font-bold text-center mb-6 text-[#20319D]">
+    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
+      <Text className="text-2xl font-bold text-center mb-6 text-[#20319D] mt-4">
         Chats
       </Text>
       {loading ? (
-        <ActivityIndicator size="large" color="#1DA1F2" className="my-4" />
+        <ActivityIndicator size="large" color="#38bdf8" className="my-4" />
       ) : chatUsers.length > 0 ? (
         <FlatList
           data={chatUsers}
@@ -140,14 +142,14 @@ const ChatList = () => {
           contentContainerStyle={{ paddingBottom: 20 }}
           renderItem={({ item }) => (
             <TouchableOpacity
-              className="flex-row items-center bg-white p-4 rounded-lg mb-3 shadow-md border-l-4 border-[#20319D]"
+              className="flex-row items-center bg-white p-4 rounded-lg mb-3 shadow-md border-l-4 border-[#7dd3fc]"
               onPress={() => handleUserClick(item)}
             >
               <Image
                 source={{
                   uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(
                     item.fullName || "User"
-                  )}&background=1DA1F2&color=fff`,
+                  )}&background=38bdf8&color=fff`,
                 }}
                 className="w-12 h-12 rounded-full"
               />
@@ -155,7 +157,7 @@ const ChatList = () => {
                 <Text className="text-lg font-semibold text-[#20319D]">
                   {item.fullName ? item.fullName : "Unknown User"}
                 </Text>
-                <Text className="text-sm text-blue-600">
+                <Text className="text-sm text-sky-600">
                   User ID: {item.userId}
                 </Text>
               </View>

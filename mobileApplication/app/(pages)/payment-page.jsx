@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   Image,
@@ -15,12 +14,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
+import ApiHandler from "../../api/ApiHandler"; // Import ApiHandler
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import
 
 const PaymentPage = () => {
   const router = useRouter();
   const navigation = useNavigation();
   const params = useLocalSearchParams();
   const [isLoading, setIsLoading] = useState(false);
+
+  const insets = useSafeAreaInsets(); // Get the safe area insets
+
+  // Add new state variables for payment status checking
+  const [isCheckingPayment, setIsCheckingPayment] = useState(true);
+  const [paymentData, setPaymentData] = useState(null);
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
 
   // Extract parameters passed from agreement page
   const { agreementId, price, address, landlordName } = params;
@@ -31,7 +39,44 @@ const PaymentPage = () => {
       ? "http://10.0.2.2:5001/api/esewa"
       : "http://192.168.1.70:5001/api/esewa";
 
-  // Only update the initiateEsewaPayment function:
+  // Check if payment is already completed when component mounts
+  useEffect(() => {
+    if (agreementId) {
+      checkPaymentCompletionStatus();
+    } else {
+      setIsCheckingPayment(false);
+    }
+  }, [agreementId]);
+
+  // Function to check if payment is already completed using ApiHandler
+  const checkPaymentCompletionStatus = async () => {
+    try {
+      console.log("Checking payment completion for agreement:", agreementId);
+
+      // Use ApiHandler.get() to fetch payment status
+      const data = await ApiHandler.get(
+        `/Payments/byAgreementId/${agreementId}`,
+        {
+          status: "Completed",
+        }
+      );
+
+      console.log("Payment data received:", data);
+
+      // If there's at least one payment with "Completed" status
+      if (data && data.length > 0) {
+        console.log("Found completed payment:", data[0]);
+        setPaymentData(data[0]);
+        setIsPaymentCompleted(true);
+      } else {
+        console.log("No completed payments found");
+      }
+    } catch (error) {
+      console.error("Payment status check error:", error);
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  };
 
   const initiateEsewaPayment = async () => {
     try {
@@ -120,6 +165,18 @@ const PaymentPage = () => {
       console.log("Payment status response:", data);
 
       if (data.success && data.payment && data.payment.status === "Completed") {
+        setIsPaymentCompleted(true);
+        setPaymentData({
+          paymentId: data.payment.id || 0,
+          agreementId: agreementId,
+          amount: data.payment.amount || price,
+          paymentStatus: "Completed",
+          paymentDate: data.payment.createdAt || new Date().toISOString(),
+          transactionId: data.payment.referenceId || "N/A",
+          referenceId: data.payment.referenceId || "N/A",
+          paymentGateway: "eSewa",
+        });
+
         Alert.alert("Success", "Your payment was successful!", [
           { text: "OK", onPress: () => navigation.goBack() },
         ]);
@@ -139,88 +196,194 @@ const PaymentPage = () => {
     }
   };
 
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // Show loading spinner while checking payment status
+  if (isCheckingPayment) {
+    return (
+      <View className="flex-1 bg-white justify-center items-center">
+        <ActivityIndicator size="large" color="#20319D" />
+        <Text className="mt-4 text-gray-600">Checking payment status...</Text>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-gray-100">
-      {/* Header with back button */}
-      <View className="flex-row items-center p-4 bg-white shadow-md">
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="black" />
+    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
+      <View className="flex-row items-center py-4 px-3 border-b border-gray-200 bg-white">
+        <TouchableOpacity onPress={() => navigation.goBack()} className="p-1">
+          <Ionicons name="arrow-back" size={24} color="#20319D" />
         </TouchableOpacity>
-        <Text className="text-2xl font-semibold ml-4">Payment</Text>
+        <Text className="text-lg font-semibold text-gray-800 ml-3">
+          Payment
+        </Text>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        {/* Payment details card */}
-        <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
-          <Text className="text-xl font-semibold mb-4">Payment Details</Text>
+        {isPaymentCompleted ? (
+          // PAYMENT COMPLETED UI
+          <View className="bg-white p-6 rounded-lg shadow-lg">
+            {/* Success Icon */}
+            <View className="items-center mb-6">
+              <View className="w-20 h-20 rounded-full bg-green-100 items-center justify-center">
+                <Ionicons name="checkmark-circle" size={56} color="#10b981" />
+              </View>
+              <Text className="text-2xl font-bold text-green-600 mt-4">
+                Payment Complete
+              </Text>
+              <Text className="text-base text-gray-600 text-center mt-1">
+                Your payment has been successfully processed
+              </Text>
+            </View>
 
-          {agreementId && (
-            <Text className="text-base mb-2">
-              Agreement ID: <Text className="font-bold">{agreementId}</Text>
-            </Text>
-          )}
+            {/* Divider */}
+            <View className="h-0.5 bg-gray-100 my-4" />
 
-          {address && (
-            <Text className="text-base mb-2">
-              Property: <Text className="font-bold">{address}</Text>
-            </Text>
-          )}
+            {/* Payment Details */}
+            <View className="mt-4 space-y-3">
+              <View className="flex-row justify-between">
+                <Text className="text-gray-600">Amount Paid</Text>
+                <Text className="font-semibold">
+                  Rs. {paymentData?.amount || price}
+                </Text>
+              </View>
 
-          {price && (
-            <Text className="text-base mb-2">
-              Amount: <Text className="font-bold">Rs. {price}</Text>
-            </Text>
-          )}
-        </View>
+              <View className="flex-row justify-between">
+                <Text className="text-gray-600">Payment Date</Text>
+                <Text className="font-semibold">
+                  {formatDate(paymentData?.paymentDate)}
+                </Text>
+              </View>
 
-        {/* Payment method section */}
-        <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
-          <Text className="text-xl font-semibold mb-4">
-            Select Payment Method
-          </Text>
+              <View className="flex-row justify-between">
+                <Text className="text-gray-600">Payment Method</Text>
+                <Text className="font-semibold">
+                  {paymentData?.paymentGateway || "eSewa"}
+                </Text>
+              </View>
 
-          <TouchableOpacity
-            className="flex-row items-center p-4 border border-gray-200 rounded-lg mb-2"
-            onPress={initiateEsewaPayment}
-            disabled={isLoading}
-          >
-            <Image
-              source={{
-                uri: "https://esewa.com.np/common/images/esewa_logo.png",
-              }}
-              style={{ width: 80, height: 40, resizeMode: "contain" }}
-            />
-            <Text className="ml-4 text-base font-medium flex-1">
-              Pay with eSewa
-            </Text>
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#60bb46" />
-            ) : (
-              <Ionicons name="chevron-forward" size={24} color="#60bb46" />
-            )}
-          </TouchableOpacity>
-        </View>
+              <View className="flex-row justify-between">
+                <Text className="text-gray-600">Status</Text>
+                <Text className="font-bold text-green-600">
+                  {paymentData?.paymentStatus || "Completed"}
+                </Text>
+              </View>
+            </View>
 
-        {/* Payment information */}
-        <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
-          <Text className="text-xl font-semibold mb-2">
-            Payment Information
-          </Text>
-          <Text className="text-sm text-gray-600 mb-2">
-            • Payment will be processed securely through eSewa
-          </Text>
-          <Text className="text-sm text-gray-600 mb-2">
-            • You'll be redirected to the official eSewa login page
-          </Text>
-          <Text className="text-sm text-gray-600 mb-2">
-            • Use your eSewa credentials to complete the payment
-          </Text>
-          <Text className="text-sm text-gray-600">
-            • For any issues, please contact customer support
-          </Text>
-        </View>
+            {/* Agreement Details */}
+            <View className="bg-gray-50 p-4 rounded-lg mt-6">
+              <Text className="font-semibold text-lg mb-2">
+                Agreement Details
+              </Text>
+              <View className="space-y-2">
+                {address && (
+                  <Text className="text-gray-600">
+                    Property: <Text className="font-semibold">{address}</Text>
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* Return Button */}
+            <TouchableOpacity
+              className="bg-[#20319D] py-4 mt-6 rounded-lg items-center"
+              onPress={() => navigation.goBack()}
+            >
+              <Text className="text-white font-semibold text-base">
+                Return to Agreements
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          // PAYMENT NOT COMPLETED UI - SHOW REGULAR PAYMENT PAGE
+          <>
+            {/* Payment details card */}
+            <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
+              <Text className="text-xl font-semibold mb-4">
+                Payment Details
+              </Text>
+
+              {agreementId && (
+                <Text className="text-base mb-2">
+                  Agreement ID: <Text className="font-bold">{agreementId}</Text>
+                </Text>
+              )}
+
+              {address && (
+                <Text className="text-base mb-2">
+                  Property: <Text className="font-bold">{address}</Text>
+                </Text>
+              )}
+
+              {price && (
+                <Text className="text-base mb-2">
+                  Amount: <Text className="font-bold">Rs. {price}</Text>
+                </Text>
+              )}
+            </View>
+
+            {/* Payment method section */}
+            <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
+              <Text className="text-xl font-semibold mb-4">
+                Select Payment Method
+              </Text>
+
+              <TouchableOpacity
+                className="flex-row items-center p-4 border border-gray-200 rounded-lg mb-2"
+                onPress={initiateEsewaPayment}
+                disabled={isLoading}
+              >
+                <Image
+                  source={{
+                    uri: "https://esewa.com.np/common/images/esewa_logo.png",
+                  }}
+                  style={{ width: 80, height: 40, resizeMode: "contain" }}
+                />
+                <Text className="ml-4 text-base font-medium flex-1">
+                  Pay with eSewa
+                </Text>
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="#60bb46" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={24} color="#60bb46" />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Payment information */}
+            <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
+              <Text className="text-xl font-semibold mb-2">
+                Payment Information
+              </Text>
+              <Text className="text-sm text-gray-600 mb-2">
+                • Payment will be processed securely through eSewa
+              </Text>
+              <Text className="text-sm text-gray-600 mb-2">
+                • You'll be redirected to the official eSewa login page
+              </Text>
+              <Text className="text-sm text-gray-600 mb-2">
+                • Use your eSewa credentials to complete the payment
+              </Text>
+              <Text className="text-sm text-gray-600">
+                • For any issues, please contact customer support
+              </Text>
+            </View>
+          </>
+        )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 

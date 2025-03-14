@@ -16,6 +16,25 @@ import ApiHandler from "../../api/ApiHandler";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+// Function to decode JWT token and extract role
+const getUserRoleFromToken = (token) => {
+  if (!token) return null;
+
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload));
+
+    // Check for role claim in the token
+    return (
+      decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] ||
+      null
+    );
+  } catch (error) {
+    console.error("Error parsing token:", error);
+    return null;
+  }
+};
+
 const SignIn = () => {
   const [isSubmitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
@@ -51,21 +70,49 @@ const SignIn = () => {
       // Send email to backend for JWT
       const response = await ApiHandler.post("/auth/login", {
         Email: form.email,
-        firebaseUId: userCredential.user.uid, // Include Firebase user ID in the request
+        firebaseUId: userCredential.user.uid,
       });
 
       // Get JWT from backend response
       const jwtToken = response.token;
       console.log("JWT Token:", jwtToken);
 
+      // Extract user role from JWT
+      const userRole = getUserRoleFromToken(jwtToken);
+      console.log("User role:", userRole);
+
+      // Check if user is a Renter
+      if (userRole !== "Renter") {
+        // Sign out from Firebase since this app is for Renters only
+        await FIREBASE_AUTH.signOut();
+
+        // Show error message
+        Alert.alert(
+          "Access Denied",
+          "This app is for Renters only. Please use the appropriate application for your role."
+        );
+
+        // Don't store token for non-Renters
+        ApiHandler.setAuthToken(null);
+        setSubmitting(false);
+        return;
+      }
+
       // Store JWT token in AsyncStorage
       await AsyncStorage.setItem("jwtToken", jwtToken);
+
+      // Save user data including role
+      const userData = {
+        email: form.email,
+        role: userRole,
+      };
+      await AsyncStorage.setItem("user", JSON.stringify(userData));
 
       // Set token for future API calls using ApiHandler
       ApiHandler.setAuthToken(jwtToken);
 
       // Show success alert
-      Alert.alert("Success", "User signed in successfully");
+      Alert.alert("Success", "Signed in successfully as Renter");
 
       // Navigate to home page (or tabs)
       router.replace("/(tabs)");
@@ -79,6 +126,11 @@ const SignIn = () => {
           errorMessage = "Incorrect password.";
         } else if (error.code === "auth/user-not-found") {
           errorMessage = "User not found.";
+        } else if (error.code === "auth/too-many-requests") {
+          errorMessage =
+            "Too many failed login attempts. Please try again later.";
+        } else {
+          errorMessage = error.message || errorMessage;
         }
       } else if (error.response) {
         // API error handling (from backend)
@@ -117,7 +169,7 @@ const SignIn = () => {
                 keyboardType="email-address"
                 className="text-black"
                 placeholder="Enter your email"
-                placeholderTextColor="#888" // Ensure placeholder text color is set
+                placeholderTextColor="#888"
               />
             </View>
           </View>
@@ -131,7 +183,7 @@ const SignIn = () => {
                 secureTextEntry
                 className="text-black"
                 placeholder="Enter your password"
-                placeholderTextColor="#888" // Ensure placeholder text color is set
+                placeholderTextColor="#888"
               />
             </View>
           </View>

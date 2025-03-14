@@ -1,16 +1,16 @@
 import { StatusBar } from "expo-status-bar";
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import "nativewind";
 
 const Welcome = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
-    <SafeAreaView className="bg-[#20319D] flex-1">
+    <View className="bg-[#20319D] flex-1" style={{ paddingTop: insets.top }}>
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         className="bg-[#20319D]"
@@ -41,7 +41,7 @@ const Welcome = () => {
       </ScrollView>
 
       <StatusBar backgroundColor="#161622" style="light" />
-    </SafeAreaView>
+    </View>
   );
 };
 

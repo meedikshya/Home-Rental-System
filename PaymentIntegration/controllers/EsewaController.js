@@ -3,6 +3,8 @@ const router = express.Router();
 const { getEsewaPaymentHash, verifyEsewaPayment } = require("../models/esewa");
 const Agreement = require("../models/Agreement");
 const Payment = require("../models/Payment");
+const Booking = require("../models/Booking");
+const Property = require("../models/Property");
 const { db } = require("../db");
 
 router.post("/initialize-agreement-payment", async (req, res) => {
@@ -262,9 +264,48 @@ router.get("/complete-payment", async (req, res) => {
       { transaction }
     );
 
+    // Get the agreementId from the payment
+    const agreementId = payment.agreementId;
+
+    // Find the agreement using the Agreement model
+    const agreement = await Agreement.findOne({
+      where: { agreementId: agreementId },
+      transaction,
+    });
+
+    if (agreement) {
+      const bookingId = agreement.bookingId;
+
+      // Get booking using Booking model
+      const booking = await Booking.findOne({
+        where: { bookingId: bookingId },
+        transaction,
+      });
+
+      if (booking) {
+        const propertyId = booking.propertyId;
+
+        // Update property status using Property model
+        await Property.update(
+          { status: "Rented" },
+          {
+            where: { propertyId: propertyId },
+            transaction,
+          }
+        );
+
+        console.log(
+          `Property ${propertyId} marked as Rented after payment ${paymentId}`
+        );
+      } else {
+        console.log(`No booking found for bookingId: ${bookingId}`);
+      }
+    } else {
+      console.log(`No agreement found for agreementId: ${agreementId}`);
+    }
+
     await transaction.commit();
 
-    // Return a nice success page instead of JSON
     return res.send(`
       <!DOCTYPE html>
       <html>
