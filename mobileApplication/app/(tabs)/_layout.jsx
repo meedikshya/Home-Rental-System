@@ -26,12 +26,13 @@ const Layout = () => {
             ),
           }}
         />
+
         <Tabs.Screen
-          name="explore"
+          name="chat"
           options={{
-            tabBarLabel: "Explore",
+            tabBarLabel: "Chat",
             tabBarIcon: ({ size, color }) => (
-              <Ionicons name="search" size={size} color={color} />
+              <Ionicons name="chatbubble-outline" size={size} color={color} />
             ),
           }}
         />
@@ -45,14 +46,19 @@ const Layout = () => {
           }}
         />
         <Tabs.Screen
-          name="chat"
+          name="notification"
           options={{
-            tabBarLabel: "Chat",
+            tabBarLabel: "Notification",
             tabBarIcon: ({ size, color }) => (
-              <Ionicons name="chatbubble-outline" size={size} color={color} />
+              <Ionicons
+                name="notifications-outline"
+                size={size}
+                color={color}
+              />
             ),
           }}
         />
+
         <Tabs.Screen
           name="profile"
           options={{

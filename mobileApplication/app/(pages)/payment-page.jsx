@@ -14,8 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
-import ApiHandler from "../../api/ApiHandler"; // Import ApiHandler
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import
+import ApiHandler from "../../api/ApiHandler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const PaymentPage = () => {
   const router = useRouter();
@@ -23,23 +23,19 @@ const PaymentPage = () => {
   const params = useLocalSearchParams();
   const [isLoading, setIsLoading] = useState(false);
 
-  const insets = useSafeAreaInsets(); // Get the safe area insets
+  const insets = useSafeAreaInsets();
 
-  // Add new state variables for payment status checking
   const [isCheckingPayment, setIsCheckingPayment] = useState(true);
   const [paymentData, setPaymentData] = useState(null);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
 
-  // Extract parameters passed from agreement page
   const { agreementId, price, address, landlordName } = params;
 
-  // Use appropriate API URL based on platform and environment
   const API_BASE_URL =
     Platform.OS === "android"
       ? "http://10.0.2.2:5001/api/esewa"
       : "http://192.168.1.70:5001/api/esewa";
 
-  // Check if payment is already completed when component mounts
   useEffect(() => {
     if (agreementId) {
       checkPaymentCompletionStatus();
@@ -48,12 +44,10 @@ const PaymentPage = () => {
     }
   }, [agreementId]);
 
-  // Function to check if payment is already completed using ApiHandler
   const checkPaymentCompletionStatus = async () => {
     try {
       console.log("Checking payment completion for agreement:", agreementId);
 
-      // Use ApiHandler.get() to fetch payment status
       const data = await ApiHandler.get(
         `/Payments/byAgreementId/${agreementId}`,
         {
@@ -63,7 +57,6 @@ const PaymentPage = () => {
 
       console.log("Payment data received:", data);
 
-      // If there's at least one payment with "Completed" status
       if (data && data.length > 0) {
         console.log("Found completed payment:", data[0]);
         setPaymentData(data[0]);
@@ -88,7 +81,6 @@ const PaymentPage = () => {
         price
       );
 
-      // Call your backend API to initialize payment
       const response = await fetch(
         `${API_BASE_URL}/initialize-agreement-payment`,
         {
@@ -108,7 +100,6 @@ const PaymentPage = () => {
       console.log("Payment initialization response:", data);
 
       if (data.success) {
-        // Get base URL without the '/api/esewa' part
         const baseUrl = API_BASE_URL.replace("/api/esewa", "");
 
         // Create URL to our bridge page with necessary parameters
@@ -210,7 +201,6 @@ const PaymentPage = () => {
     });
   };
 
-  // Show loading spinner while checking payment status
   if (isCheckingPayment) {
     return (
       <View className="flex-1 bg-white justify-center items-center">

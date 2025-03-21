@@ -1,8 +1,14 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LoginForm } from "./pages/Login/LoginForm.js";
 import { RegisterForm } from "./pages/Signup/RegisterForm.js";
 import UserInfo from "./pages/Signup/UserInfo.js";
+
+// Notification imports
+import {
+  initializeNotifications,
+  setupNotificationListeners,
+} from "./services/Firebase-notification.js";
 
 // Landlord imports
 import Layout from "./components/Landlord/Layout.js";
@@ -15,6 +21,7 @@ import Payment from "./pages/Landlord/Payment.js";
 import AddPropertyDetails from "./components/property/PropertyDetailsForm.js";
 import AddPropertyForm from "./components/property/AddPropertyForm.js";
 import UploadPropertyImages from "./components/property/PropertyImageUpload.js";
+import NotificationPage from "./components/Landlord/Notification.js";
 
 // Admin imports
 import LayoutAdmin from "./components/admin/LayoutAdmin.js";
@@ -34,19 +41,54 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 function App() {
-  // Remove login and register functions if they're not used or defined elsewhere
-  // These aren't actually needed since your LoginForm and RegisterForm components
-  // likely handle authentication internally now
+  // Initialize notifications - similar to your mobile app
+  useEffect(() => {
+    // Request notification permission and initialize
+    const initNotifications = async () => {
+      try {
+        // Initialize notifications system
+        await initializeNotifications();
+
+        // Set up listeners for notifications
+        const unsubscribe = setupNotificationListeners();
+
+        // Return cleanup function
+        return unsubscribe;
+      } catch (error) {
+        console.error("Error initializing notifications:", error);
+        return () => {};
+      }
+    };
+
+    // Start initialization and store the cleanup function
+    const notificationCleanup = initNotifications();
+
+    // Clean up on unmount - handles both synchronous and Promise returns
+    return () => {
+      if (
+        notificationCleanup &&
+        typeof notificationCleanup.then === "function"
+      ) {
+        // If it's a Promise, wait for it to resolve then call the function
+        notificationCleanup.then((cleanup) => {
+          if (typeof cleanup === "function") {
+            cleanup();
+          }
+        });
+      } else if (typeof notificationCleanup === "function") {
+        // If it's already a function, call it directly
+        notificationCleanup();
+      }
+    };
+  }, []);
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Authentication Routes - remove the props that are causing errors */}
         <Route path="/login" element={<LoginForm />} />
         <Route path="/register" element={<RegisterForm />} />
         <Route path="/userinfo/:userId" element={<UserInfo />} />
 
-        {/* Admin Routes - Protected by Role */}
         <Route
           path="/admin/*"
           element={
@@ -84,6 +126,7 @@ function App() {
                   <Route path="home" element={<Home />} />
                   <Route path="addproperty" element={<AddPropertyForm />} />
                   <Route path="add-property" element={<AddPropertyDetails />} />
+                  <Route path="notifications" element={<NotificationPage />} />
                   <Route
                     path="upload-images/:propertyId"
                     element={<UploadPropertyImages />}

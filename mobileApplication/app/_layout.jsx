@@ -12,6 +12,8 @@ import "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { useColorScheme } from "../hooks/useColorScheme";
+// Import notification functionality using * as syntax
+import * as NotificationHelper from "../firebaseNotification.js";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -20,6 +22,22 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+
+  // Initialize notifications
+  useEffect(() => {
+    // Register for push notifications
+    NotificationHelper.registerForPushNotificationsAsync();
+
+    // Set up notification listeners
+    const { foregroundSubscription, responseSubscription } =
+      NotificationHelper.setupNotificationListeners();
+
+    // Clean up on unmount
+    return () => {
+      foregroundSubscription?.remove();
+      responseSubscription?.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (loaded) {
@@ -34,7 +52,6 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <SafeAreaProvider>
-        {" "}
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />

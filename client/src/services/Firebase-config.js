@@ -15,6 +15,8 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBfEdQ6VymOIcCOyeEuppeGyWfYt4_PKKo",
@@ -30,6 +32,14 @@ const firebaseConfig = {
 const FIREBASE_APP = initializeApp(firebaseConfig);
 const FIREBASE_AUTH = getAuth(FIREBASE_APP);
 const FIREBASE_DB = getFirestore(FIREBASE_APP);
+
+// Initialize Messaging (add this after your FIREBASE_DB initialization)
+let messaging = null;
+isSupported().then((isSupported) => {
+  if (isSupported) {
+    messaging = getMessaging(FIREBASE_APP);
+  }
+});
 
 const getMessages = (chatId, setMessages) => {
   // Check if chat exists first
@@ -329,6 +339,7 @@ export {
   FIREBASE_DB,
   getMessages,
   sendMessage,
+  messaging,
   getAssociatedUsers,
   findMessagesBetweenUsers,
 };

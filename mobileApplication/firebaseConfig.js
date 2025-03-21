@@ -18,6 +18,7 @@ import {
 import { getAuth } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 // Firebase Config
 const firebaseConfig = {
@@ -43,6 +44,14 @@ const FIREBASE_AUTH =
 
 // Initialize Firestore
 const FIREBASE_DB = getFirestore(FIREBASE_APP);
+
+// Initialize Messaging (add this after your FIREBASE_DB initialization)
+let messaging = null;
+isSupported().then((isSupported) => {
+  if (isSupported) {
+    messaging = getMessaging(FIREBASE_APP);
+  }
+});
 
 const getMessages = (chatId, setMessages) => {
   // Check if chat exists before setting up listener
@@ -359,6 +368,7 @@ export {
   FIREBASE_APP,
   FIREBASE_AUTH,
   FIREBASE_DB,
+  messaging,
   getMessages,
   sendMessage,
   getAssociatedUsers,
