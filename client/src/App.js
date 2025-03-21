@@ -120,6 +120,9 @@ function App() {
                 <Routes>
                   <Route path="property" element={<Property />} />
                   <Route path="booking" element={<Booking />} />
+                  {/* Add this new route for agreement details */}
+                  <Route path="booking/:agreementId" element={<Booking />} />
+
                   <Route path="chat" element={<Chat />} />
                   <Route path="chat/:chatId" element={<ChatPage />} />
                   <Route path="payment" element={<Payment />} />

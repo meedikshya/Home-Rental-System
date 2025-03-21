@@ -16,7 +16,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Checkbox from "expo-checkbox";
 import ApiHandler from "../../api/ApiHandler";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { sendNotificationToUser } from "../../firebaseNotification.js";
 
 const Agreement = () => {
   const navigation = useNavigation();
@@ -223,14 +224,42 @@ const Agreement = () => {
       bookingId: bookingId,
       landlordId: landlordId,
       renterId: renterId,
-      startDate: startDate.toISOString().split("T")[0], // Format to 'YYYY-MM-DD'
-      endDate: endDate.toISOString().split("T")[0], // Format to 'YYYY-MM-DD'
+      startDate: startDate.toISOString().split("T")[0],
+      endDate: endDate.toISOString().split("T")[0],
       status: "Pending",
       signedAt: new Date().toISOString(),
     };
 
     try {
-      await ApiHandler.post("/Agreements", agreementData);
+      // Create the agreement
+      const response = await ApiHandler.post("/Agreements", agreementData);
+
+      // Send notification to landlord
+      if (landlordId) {
+        const notificationTitle = "New Agreement Request";
+        const notificationBody = `A renter has initiated a new lease agreement for your property at ${address}.`;
+
+        // Additional data to be included with the notification
+        const additionalData = {
+          propertyId,
+          bookingId,
+          agreementId: response?.agreementId, // If your API returns the new agreement ID
+          screen: "LandlordAgreementDetails", // Screen to navigate to when notification is tapped
+          action: "view_agreement",
+          timestamp: new Date().toISOString(),
+        };
+
+        // Send the notification
+        await sendNotificationToUser(
+          landlordId,
+          notificationTitle,
+          notificationBody,
+          additionalData
+        );
+
+        console.log("Agreement notification sent to landlord:", landlordId);
+      }
+
       setIsPending(true);
       Alert.alert(
         "Request Sent",

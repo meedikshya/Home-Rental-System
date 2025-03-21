@@ -146,35 +146,7 @@ const BookingList = () => {
                 kitchen: propertyResponse.kitchen,
               };
 
-              // Try to get property image
-              try {
-                const imagesResponse = await ApiHandler.get(
-                  `/PropertyImages/property/${propertyResponse.propertyId}`,
-                  {
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                    },
-                  }
-                );
-
-                if (imagesResponse && imagesResponse.length > 0) {
-                  const imageString = imagesResponse[0].imageUrl;
-                  if (imageString) {
-                    if (imageString.startsWith("data:image")) {
-                      detailsMap[bookingId].image = imageString;
-                    } else if (imageString.startsWith("/9j/")) {
-                      detailsMap[
-                        bookingId
-                      ].image = `data:image/jpeg;base64,${imageString}`;
-                    }
-                  }
-                }
-              } catch (imageError) {
-                console.error(
-                  `Error fetching images for property ${propertyResponse.propertyId}:`,
-                  imageError
-                );
-              }
+              // Removed image fetching code that was causing 404 errors
             }
           }
         } catch (error) {

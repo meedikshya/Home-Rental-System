@@ -10,8 +10,10 @@ import {
   serverTimestamp,
   Timestamp,
   getDocs,
+  getDoc,
 } from "firebase/firestore";
 import { FIREBASE_DB, FIREBASE_AUTH } from "./Firebase-config.js";
+import { getUserDataFromFirebase } from "../context/AuthContext.js";
 
 // Request notification permission for browser
 export const requestNotificationPermission = async () => {
@@ -80,16 +82,16 @@ export const setupNotificationListeners = () => {
     // For web, we don't have foreground notification listeners like in Expo
     // Instead, we'll set up a Firebase listener and show browser notifications
 
-    const userId = FIREBASE_AUTH.currentUser?.uid;
+    const userId = getUserId();
     if (!userId) {
-      console.log("No user logged in, can't set up notification listeners");
+      console.log("No user ID available, can't set up notification listeners");
       return () => {};
     }
 
     // Listen for new notifications in Firebase
     const notificationsQuery = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId),
+      where("receiverId", "==", userId.toString()),
       where("read", "==", false)
     );
 
@@ -130,12 +132,11 @@ export const sendNotificationToUser = async (
   additionalData = {}
 ) => {
   try {
+    // Convert receiverId to string to ensure consistency
+    receiverId = receiverId.toString();
+
     // Get current user as sender
-    const senderId = FIREBASE_AUTH.currentUser?.uid;
-    if (!senderId) {
-      console.error("No user logged in, can't send notification");
-      return null;
-    }
+    const senderId = FIREBASE_AUTH.currentUser?.uid || "system";
 
     // Store in Firebase with sender and receiver
     const notificationId = await storeNotificationInFirebase(
@@ -161,9 +162,9 @@ export const sendTestNotification = async (
 ) => {
   try {
     // Get current user for both sender and receiver
-    const userId = FIREBASE_AUTH.currentUser?.uid;
+    const userId = getUserId();
     if (!userId) {
-      console.error("No user logged in, can't send test notification");
+      console.error("No user ID available, can't send test notification");
       return null;
     }
 
@@ -171,9 +172,13 @@ export const sendTestNotification = async (
     const notificationId = await storeNotificationInFirebase(
       title,
       body,
-      userId,
-      userId,
-      { route: "/profile" }
+      userId.toString(),
+      userId.toString(),
+      {
+        route: "/profile",
+        action: "test_notification",
+        timestamp: new Date().toISOString(),
+      }
     );
 
     // Show browser notification if permission granted
@@ -207,6 +212,10 @@ export const storeNotificationInFirebase = async (
       return null;
     }
 
+    // Ensure IDs are strings
+    senderId = senderId.toString();
+    receiverId = receiverId.toString();
+
     const notificationData = {
       title,
       body,
@@ -216,6 +225,8 @@ export const storeNotificationInFirebase = async (
       read: false,
       createdAt: serverTimestamp(),
     };
+
+    console.log("Storing notification:", notificationData);
 
     // Add to Firestore
     const docRef = await addDoc(
@@ -231,81 +242,196 @@ export const storeNotificationInFirebase = async (
 };
 
 // Mark notification as read
+
 export const markNotificationAsRead = async (notificationId) => {
   try {
+    console.log("Marking notification as read:", notificationId);
+
+    // Use the local getUserId function instead of imported one
+    const userId = getUserId();
+    if (!userId) {
+      console.error("No user ID available to mark notification as read");
+      return false;
+    }
+
+    console.log("User ID retrieved:", userId);
+
+    // Get the notification document
     const notificationRef = doc(FIREBASE_DB, "notifications", notificationId);
+
+    // Simply update the read status - only updating 'read' field to match security rules
+    // Your rules only allow updating the 'read' field specifically
     await updateDoc(notificationRef, {
       read: true,
-      readAt: serverTimestamp(),
+      // Removed readAt since your rules don't include it
     });
-    console.log("Notification marked as read:", notificationId);
+
+    console.log("Notification marked as read successfully");
     return true;
   } catch (error) {
     console.error("Error marking notification as read:", error);
     return false;
   }
 };
+// Comprehensive function to get the current user ID from multiple sources
+function getUserId(passedUserId = null) {
+  try {
+    // If a userId is explicitly passed, use it first
+    if (passedUserId !== null && passedUserId !== undefined) {
+      return passedUserId.toString();
+    }
+
+    // Rest of existing function remains the same...
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+
+    // These are all the different ways user ID might be stored
+    const possibleIds = [
+      userData.userId,
+      userData.user_id,
+      userData.id,
+      userData.uid,
+      FIREBASE_AUTH.currentUser?.uid,
+    ];
+
+    // Get first non-null value
+    let userId = possibleIds.find((id) => id !== null && id !== undefined);
+
+    // If we found an ID, convert to string and return
+    if (userId) {
+      console.log("Found user ID:", userId);
+      return userId.toString();
+    }
+
+    // If all else fails, log warning and return null
+    console.warn("Could not find user ID");
+    return null;
+  } catch (error) {
+    console.error("Error getting user ID:", error);
+    return null;
+  }
+}
 
 // Function to listen for user's notifications (as receiver)
-export const listenForUserNotifications = (callback) => {
+export const listenForUserNotifications = (callback, passedUserId = null) => {
   try {
-    // Get current user ID
-    const userId = FIREBASE_AUTH.currentUser?.uid;
+    // Get the current user ID, passing along any provided userId
+    const userId = passedUserId || getUserId();
+    console.log(
+      "Setting up notification listener for user ID:",
+      userId,
+      passedUserId ? "(from passed parameter)" : "(from local storage/auth)"
+    );
+
     if (!userId) {
-      console.log("No user logged in, can't listen for notifications");
+      console.error("No user ID available for notifications");
       callback([]);
       return () => {};
     }
 
-    // Create query for notifications where user is the RECEIVER
-    const notificationsQuery = query(
+    // IMPORTANT: Convert userId to string to match "29" in Firebase
+    const userIdString = userId.toString();
+    console.log("Using userId as string:", userIdString);
+
+    // Create a query for notifications where receiverId equals the current user's ID
+    const q = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId),
+      where("receiverId", "==", userIdString),
       orderBy("createdAt", "desc")
     );
 
-    // Setup real-time listener
+    console.log("Query created for receiverId:", userIdString);
+
+    // Set up the listener
     const unsubscribe = onSnapshot(
-      notificationsQuery,
-      (snapshot) => {
+      q,
+      (querySnapshot) => {
         const notifications = [];
-        snapshot.forEach((doc) => {
-          // Convert Firestore Timestamp to JS Date for display
+        querySnapshot.forEach((doc) => {
+          // Convert Firestore timestamp to JavaScript Date
           const data = doc.data();
 
-          // Format timestamp - different handling for web vs mobile
-          let createdAt = null;
-          if (data.createdAt) {
-            createdAt =
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toDate()
-                : new Date(data.createdAt);
-          } else {
-            createdAt = new Date();
-          }
+          // Log notification details for debugging
+          console.log("Found notification:", doc.id, {
+            title: data.title,
+            receiverId: data.receiverId,
+            read: data.read,
+          });
 
           notifications.push({
             id: doc.id,
             ...data,
-            createdAt,
+            createdAt: data.createdAt?.toDate?.() || new Date(),
           });
         });
 
-        // Pass notifications to callback
+        console.log(
+          `Retrieved ${notifications.length} notifications for user ${userIdString}`
+        );
         callback(notifications);
       },
       (error) => {
-        console.error("Error listening for notifications:", error);
+        console.error("Error fetching notifications:", error);
+        // If we get an index error, suggest creating the index
+        if (
+          error.code === "failed-precondition" ||
+          error.message.includes("index")
+        ) {
+          console.error(
+            "This query requires an index. Please create it in the Firebase console."
+          );
+        }
         callback([]);
       }
     );
 
-    // Return unsubscribe function with safety check
-    return typeof unsubscribe === "function" ? unsubscribe : () => {};
+    return unsubscribe;
   } catch (error) {
     console.error("Error setting up notification listener:", error);
     callback([]);
     return () => {};
+  }
+};
+
+// Direct fetch function to test notifications - bypassing the listener
+export const directFetchNotifications = async (userId) => {
+  try {
+    if (!userId) {
+      userId = getUserId();
+    }
+
+    if (!userId) {
+      console.error("No user ID available for direct notification fetch");
+      return [];
+    }
+
+    const userIdString = userId.toString();
+    console.log("Directly fetching notifications for userId:", userIdString);
+
+    const notificationsQuery = query(
+      collection(FIREBASE_DB, "notifications"),
+      where("receiverId", "==", userIdString),
+      orderBy("createdAt", "desc")
+    );
+
+    const querySnapshot = await getDocs(notificationsQuery);
+    const notifications = [];
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      notifications.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+      });
+    });
+
+    console.log(
+      `Directly fetched ${notifications.length} notifications for user ${userIdString}`
+    );
+    return notifications;
+  } catch (error) {
+    console.error("Error directly fetching notifications:", error);
+    return [];
   }
 };
 
@@ -321,6 +447,10 @@ export const getNotificationsBetweenUsers = (
       callback([]);
       return () => {};
     }
+
+    // Convert to strings
+    senderId = senderId.toString();
+    receiverId = receiverId.toString();
 
     // Query for notifications between these users
     const notificationsQuery = query(
@@ -368,9 +498,9 @@ export const getNotificationsBetweenUsers = (
 export const getUnreadNotificationCount = (callback) => {
   try {
     // Get current user ID
-    const userId = FIREBASE_AUTH.currentUser?.uid;
+    const userId = getUserId();
     if (!userId) {
-      console.log("No user logged in, can't get unread count");
+      console.log("No user ID available, can't get unread count");
       callback(0);
       return () => {};
     }
@@ -378,7 +508,7 @@ export const getUnreadNotificationCount = (callback) => {
     // Create query for unread notifications where user is RECEIVER
     const unreadQuery = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId),
+      where("receiverId", "==", userId.toString()),
       where("read", "==", false)
     );
 
@@ -405,16 +535,16 @@ export const getUnreadNotificationCount = (callback) => {
 // Mark all notifications as read
 export const markAllNotificationsAsRead = async () => {
   try {
-    const userId = FIREBASE_AUTH.currentUser?.uid;
+    const userId = getUserId();
     if (!userId) {
-      console.error("No user logged in");
+      console.error("No user ID available");
       return false;
     }
 
     // Get all unread notifications
     const unreadQuery = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId),
+      where("receiverId", "==", userId.toString()),
       where("read", "==", false)
     );
 
