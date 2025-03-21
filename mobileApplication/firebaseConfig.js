@@ -112,20 +112,25 @@ const sendMessage = async (chatId, messageData, userId) => {
     if (typeof messageData === "string") {
       // Simple string case
       finalMessage = {
-        text: messageData,
         senderId: userId,
+        senderEmail: "",
+        text: {
+          text: messageData,
+          senderId: 0, // Default numeric ID
+          receiverId: "", // Empty default
+        },
         timestamp: serverTimestamp(),
       };
     } else if (typeof messageData === "object") {
-      // Object with fields
+      // Object with fields - create the nested structure you want
       finalMessage = {
-        text:
-          typeof messageData.text === "object"
-            ? messageData.text.text
-            : messageData.text,
         senderId: messageData.senderId || userId,
         senderEmail: messageData.senderEmail || "",
-        receiverId: messageData.receiverId,
+        text: {
+          text: messageData.text || "",
+          senderId: parseInt(messageData.internalUserId) || 0, // Numeric internal ID
+          receiverId: messageData.receiverId || "",
+        },
         timestamp: messageData.timestamp || serverTimestamp(),
       };
     } else {
@@ -141,7 +146,6 @@ const sendMessage = async (chatId, messageData, userId) => {
     throw error;
   }
 };
-
 // Find all messages between two users (matches web version)
 const findMessagesBetweenUsers = async (
   currentUserFirebaseId,

@@ -187,12 +187,14 @@ const Chat = () => {
             try {
               const messageData = {
                 text: message,
-                senderId: currentFirebaseId,
+                senderId: currentFirebaseId, // Firebase UID at top level
+                internalUserId: currentUserId, // Internal user ID for text.senderId
                 senderEmail: getAuth().currentUser?.email || "",
                 receiverId: landlordFirebaseId,
                 timestamp: new Date(),
               };
 
+              console.log("Sending message data:", messageData);
               await sendNewMessage(messageData);
             } catch (error) {
               console.error("Error sending message:", error);

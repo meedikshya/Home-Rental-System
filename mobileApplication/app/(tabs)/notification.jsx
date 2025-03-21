@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -21,17 +22,18 @@ import {
   markNotificationAsRead,
   directFetchNotifications,
 } from "../../firebaseNotification.js";
-import { useAuth } from "../../context/AuthContext.jsx";
-import { useTheme } from "../../hooks/useColorScheme.jsx";
+import { getUserDataFromFirebase } from "../../context/AuthContext"; // Import getUserDataFromFirebase
+import { getAuth } from "firebase/auth";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import SafeAreaInsets
 
 const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
+  // Remove useAuth and add userId prop
   const [notifications, setNotifications] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(passedUserId || null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const navigation = useNavigation();
-  const { user } = useAuth();
-  const isDarkMode = useTheme() === "dark";
+  const insets = useSafeAreaInsets(); // Get the safe area insets
 
   // Calculate unread count and expose it to parent component
   const unreadCount = useMemo(() => {
@@ -200,32 +202,35 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
     }
   };
 
-  // Get user ID if not passed
+  // Fetch current user ID from Firebase
   useEffect(() => {
-    const getUserId = async () => {
+    const fetchCurrentUserId = async () => {
       try {
-        setErrorMessage(null);
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
 
-        if (passedUserId) {
-          setCurrentUserId(passedUserId);
-          return;
-        }
-
-        if (user?.uid) {
-          setCurrentUserId(user.uid);
+        if (currentUser) {
+          const userId = await getUserDataFromFirebase();
+          console.log("Fetched Firebase User ID:", userId);
+          if (userId) {
+            setCurrentUserId(Number(userId));
+          } else {
+            setErrorMessage("Unable to fetch user data.");
+          }
         } else {
-          setErrorMessage("No user ID available");
+          console.log("No current user found.");
+          setLoading(false);
         }
       } catch (error) {
-        console.error("Error getting user ID:", error);
-        setErrorMessage("Error getting user data");
+        console.error("Error fetching user data from Firebase:", error);
+        setErrorMessage("Unable to fetch user data.");
       } finally {
         setLoading(false);
       }
     };
 
-    getUserId();
-  }, [passedUserId, user]);
+    fetchCurrentUserId();
+  }, []);
 
   // Listen for notifications
   useEffect(() => {
@@ -281,34 +286,18 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
 
     return (
       <TouchableOpacity
-        style={[
-          styles.notificationItem,
-          {
-            backgroundColor: notification.read
-              ? isDarkMode
-                ? "#1F2937"
-                : "white"
-              : isDarkMode
-              ? "rgba(59, 130, 246, 0.1)"
-              : "#EBF5FF",
-            borderColor: notification.read
-              ? isDarkMode
-                ? "#374151"
-                : "#E5E7EB"
-              : isDarkMode
-              ? "#2563EB"
-              : "#BFDBFE",
-          },
-        ]}
+        className={`notificationItem ${
+          notification.read ? "bg-white" : "bg-blue-50"
+        } border border-gray-200 rounded-lg mb-2 flex-row overflow-hidden`}
         onPress={() => handleNotificationPress(notification)}
       >
         {/* Colored bar indicator */}
-        <View style={[styles.typeIndicator, { backgroundColor: color }]} />
+        <View className={`typeIndicator ${color}`} />
 
-        <View style={styles.notificationContent}>
+        <View className="notificationContent flex-1 p-3">
           {/* Header with title and time */}
-          <View style={styles.notificationHeader}>
-            <View style={styles.titleContainer}>
+          <View className="notificationHeader flex-row justify-between mb-1">
+            <View className="titleContainer flex-row items-center flex-1">
               {iconType === "Feather" && (
                 <Feather
                   name={icon}
@@ -317,26 +306,16 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
                   style={styles.icon}
                 />
               )}
-              <Text
-                style={[
-                  styles.title,
-                  { color: isDarkMode ? "white" : "#1F2937" },
-                ]}
-                numberOfLines={1}
-              >
+              <Text className="title text-gray-800 font-semibold text-sm flex-1">
                 {notification.title}
               </Text>
             </View>
 
-            <View style={styles.metaContainer}>
-              {!notification.read && <View style={styles.unreadDot} />}
-              <View style={styles.timeContainer}>
-                <Feather
-                  name="clock"
-                  size={10}
-                  color={isDarkMode ? "#9CA3AF" : "#6B7280"}
-                />
-                <Text style={styles.timeText}>
+            <View className="metaContainer flex-row items-center">
+              {!notification.read && <View className="unreadDot" />}
+              <View className="timeContainer flex-row items-center">
+                <Feather name="clock" size={10} color="#9CA3AF" />
+                <Text className="timeText text-xs text-gray-500 ml-1">
                   {formatTimeAgo(notification.createdAt)}
                 </Text>
               </View>
@@ -344,30 +323,15 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
           </View>
 
           {/* Body */}
-          <Text
-            style={[styles.body, { color: isDarkMode ? "#D1D5DB" : "#4B5563" }]}
-            numberOfLines={2}
-          >
+          <Text className="body text-gray-700 text-xs ml-5 line-clamp-2">
             {notification.body}
           </Text>
 
           {/* Tag */}
           {notification.data && notification.data.action && (
-            <View style={styles.tagContainer}>
-              <View
-                style={[
-                  styles.tag,
-                  { backgroundColor: isDarkMode ? "#374151" : "#F3F4F6" },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tagText,
-                    { color: isDarkMode ? "#D1D5DB" : "#6B7280" },
-                  ]}
-                >
-                  {text}
-                </Text>
+            <View className="tagContainer ml-5">
+              <View className="tag bg-gray-100 rounded-md px-2 py-1">
+                <Text className="tagText text-gray-500 text-xs">{text}</Text>
               </View>
             </View>
           )}
@@ -378,62 +342,27 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
 
   // Empty state component
   const EmptyState = () => (
-    <View style={styles.emptyState}>
-      <Feather
-        name="bell"
-        size={32}
-        color={isDarkMode ? "#4B5563" : "#D1D5DB"}
-        style={styles.emptyIcon}
-      />
-      <Text
-        style={[
-          styles.emptyText,
-          { color: isDarkMode ? "#9CA3AF" : "#6B7280" },
-        ]}
-      >
+    <View className="emptyState flex-1 justify-center items-center p-6">
+      <Feather name="bell" size={32} color="#D1D5DB" className="emptyIcon" />
+      <Text className="emptyText text-sm text-gray-600 mb-1">
         No notifications yet
       </Text>
-      <Text
-        style={[
-          styles.emptySubtext,
-          { color: isDarkMode ? "#9CA3AF" : "#6B7280" },
-        ]}
-      >
+      <Text className="emptySubtext text-xs text-gray-500 text-center">
         You'll see notifications here when they arrive
       </Text>
     </View>
   );
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDarkMode ? "#111827" : "white" },
-      ]}
-    >
+    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
+      <Text className="text-2xl font-bold text-center mb-6 text-[#20319D] mt-4">
+        Notifications
+      </Text>
       {/* Header with unread count */}
       {unreadCount > 0 && (
-        <View
-          style={[
-            styles.unreadBanner,
-            {
-              backgroundColor: isDarkMode
-                ? "rgba(59, 130, 246, 0.2)"
-                : "#EBF5FF",
-            },
-          ]}
-        >
-          <Feather
-            name="bell"
-            size={12}
-            color={isDarkMode ? "#93C5FD" : "#2563EB"}
-          />
-          <Text
-            style={[
-              styles.unreadText,
-              { color: isDarkMode ? "#93C5FD" : "#2563EB" },
-            ]}
-          >
+        <View className="unreadBanner flex-row items-center p-3 bg-blue-50 rounded-lg mb-3">
+          <Feather name="bell" size={12} color="#2563EB" />
+          <Text className="unreadText text-sm font-medium text-blue-700 ml-2">
             You have {unreadCount} unread notification
             {unreadCount !== 1 ? "s" : ""}
           </Text>
@@ -442,21 +371,16 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
 
       {/* Error Message */}
       {errorMessage && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+        <View className="errorContainer p-3 bg-red-100 rounded-lg mb-3">
+          <Text className="errorText text-sm text-red-700">{errorMessage}</Text>
         </View>
       )}
 
       {/* Content */}
       {loading ? (
-        <View style={styles.loadingContainer}>
+        <View className="loadingContainer flex-1 justify-center items-center p-6">
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text
-            style={[
-              styles.loadingText,
-              { color: isDarkMode ? "#D1D5DB" : "#6B7280" },
-            ]}
-          >
+          <Text className="loadingText text-sm text-gray-600 mt-3">
             Loading...
           </Text>
         </View>
@@ -468,7 +392,7 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={EmptyState}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ItemSeparatorComponent={() => <View className="separator h-2" />}
         />
       )}
     </View>
@@ -476,81 +400,12 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-  unreadBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  unreadText: {
-    fontSize: 12,
-    fontWeight: "500",
-    marginLeft: 6,
-  },
-  errorContainer: {
-    padding: 12,
-    backgroundColor: "#FEE2E2",
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  errorText: {
-    color: "#B91C1C",
-    fontSize: 12,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-  },
   listContent: {
     flexGrow: 1,
-  },
-  notificationItem: {
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 8,
-    flexDirection: "row",
-    overflow: "hidden",
   },
   typeIndicator: {
     width: 4,
     height: "100%",
-  },
-  notificationContent: {
-    flex: 1,
-    padding: 12,
-  },
-  notificationHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  icon: {
-    marginRight: 6,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: "500",
-    flex: 1,
-  },
-  metaContainer: {
-    flexDirection: "row",
-    alignItems: "center",
   },
   unreadDot: {
     width: 8,
@@ -558,53 +413,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#3B82F6",
     marginRight: 6,
-  },
-  timeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  timeText: {
-    fontSize: 10,
-    color: "#9CA3AF",
-    marginLeft: 4,
-  },
-  body: {
-    fontSize: 12,
-    marginLeft: 20,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  tagContainer: {
-    marginLeft: 20,
-  },
-  tag: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: "flex-start",
-  },
-  tagText: {
-    fontSize: 10,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  emptyIcon: {
-    marginBottom: 12,
-  },
-  emptyText: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  emptySubtext: {
-    fontSize: 12,
-    textAlign: "center",
-  },
-  separator: {
-    height: 8,
   },
 });
 

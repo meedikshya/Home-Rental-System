@@ -5,6 +5,7 @@ import {
   sendMessage,
   findMessagesBetweenUsers,
 } from "../firebaseConfig";
+import { sendNotificationToUser } from "../firebaseNotification"; // Import the notification function
 
 // Updated to match web version with additional parameters
 const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
@@ -45,12 +46,22 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
 
   // Direct message fetching between two users - more reliable approach
   useEffect(() => {
-    if (user && currentUserFirebaseId && partnerFirebaseId) {
+    if (user && currentUserFirebaseId && partnerFirebaseId && chatId) {
       setLoading(true);
+      console.log("Finding messages between users:", {
+        currentUserFirebaseId,
+        partnerFirebaseId,
+      });
+
       findMessagesBetweenUsers(currentUserFirebaseId, partnerFirebaseId)
         .then((fetchedMessages) => {
-          if (fetchedMessages.length > 0) {
+          if (fetchedMessages && fetchedMessages.length > 0) {
+            console.log(
+              `Found ${fetchedMessages.length} messages between users`
+            );
             setMessages(fetchedMessages);
+          } else {
+            console.log("No messages found between these users");
           }
           setLoading(false);
         })
@@ -58,8 +69,21 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
           console.error("Error in direct message fetching:", err);
           setLoading(false);
         });
+    } else {
+      // Log what's missing
+      const missing = [];
+      if (!user) missing.push("user");
+      if (!currentUserFirebaseId) missing.push("currentUserFirebaseId");
+      if (!partnerFirebaseId) missing.push("partnerFirebaseId");
+      if (!chatId) missing.push("chatId");
+
+      if (missing.length > 0) {
+        console.log(
+          `Skipping direct message fetch - missing: ${missing.join(", ")}`
+        );
+      }
     }
-  }, [currentUserFirebaseId, partnerFirebaseId, user]);
+  }, [currentUserFirebaseId, partnerFirebaseId, user, chatId]);
 
   // Enhanced message sending with proper formatting
   const sendNewMessage = async (messageData) => {
@@ -73,6 +97,37 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
 
       // Send the message using updated function
       await sendMessage(chatId, messageData, currentUserFirebaseId || user.uid);
+
+      // Send notification to the receiver
+      try {
+        const receiverId = messageData.receiverId; // Assuming receiverId is in messageData
+        const notificationTitle = "New Message";
+        const notificationBody = `You have a new message from ${
+          user.email || "a user"
+        }`; // Customize as needed
+
+        // Additional data to be included with the notification
+        const additionalData = {
+          chatId: chatId,
+          senderId: currentUserFirebaseId,
+          receiverId: receiverId,
+          screen: "Chat", // Screen to navigate to when notification is tapped
+          action: "view_chat",
+          timestamp: new Date().toISOString(),
+        };
+
+        // Send the notification
+        await sendNotificationToUser(
+          receiverId,
+          notificationTitle,
+          notificationBody,
+          additionalData
+        );
+
+        console.log("Message notification sent to user:", receiverId);
+      } catch (notificationError) {
+        console.error("Error sending message notification:", notificationError);
+      }
 
       // After sending, refresh messages
       setTimeout(async () => {
