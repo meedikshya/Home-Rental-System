@@ -23,22 +23,51 @@ export default function RootLayout() {
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
-  // Initialize notifications
+  // Initialize notifications system - similar to web version
   useEffect(() => {
-    // Register for push notifications
-    NotificationHelper.registerForPushNotificationsAsync();
+    // Initialize notification system and get unsubscribe function
+    const initNotifications = async () => {
+      try {
+        console.log("Initializing notification system...");
 
-    // Set up notification listeners
-    const { foregroundSubscription, responseSubscription } =
-      NotificationHelper.setupNotificationListeners();
+        // Initialize notifications - this will handle permissions and setup
+        const unsubscribe = await NotificationHelper.initializeNotifications();
 
-    // Clean up on unmount
-    return () => {
-      foregroundSubscription?.remove();
-      responseSubscription?.remove();
+        console.log("Notification system initialized successfully");
+
+        // Return the unsubscribe function for cleanup
+        return unsubscribe;
+      } catch (error) {
+        console.error("Error initializing notifications:", error);
+        return () => {};
+      }
     };
-  }, []);
 
+    // Call initialization and store the cleanup function
+    const notificationCleanup = initNotifications();
+
+    // Clean up on component unmount - handle both synchronous and Promise returns
+    return () => {
+      if (
+        notificationCleanup &&
+        typeof notificationCleanup.then === "function"
+      ) {
+        // If it's a Promise, wait for it to resolve then call the returned function
+        notificationCleanup.then((cleanup) => {
+          if (typeof cleanup === "function") {
+            console.log("Cleaning up notification listeners");
+            cleanup();
+          }
+        });
+      } else if (typeof notificationCleanup === "function") {
+        // If it's already a function, call it directly
+        console.log("Directly cleaning up notification listeners");
+        notificationCleanup();
+      }
+    };
+  }, []); // Empty dependency array means this runs once on mount
+
+  // Hide splash screen once fonts are loaded
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
