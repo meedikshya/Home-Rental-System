@@ -7,6 +7,8 @@ import {
   findMessagesBetweenUsers,
   sendMessage,
 } from "../../services/Firebase-config.js";
+import { sendNotificationToUser } from "../../services/Firebase-notification.js";
+import { getUserDataFromFirebaseId } from "../../context/AuthContext.js";
 
 const ChatPage = () => {
   // Get parameters from navigation state
@@ -61,17 +63,20 @@ const ChatPage = () => {
         if (currentUser) {
           const firebaseUserId = currentUser.uid;
           setCurrentUserFirebaseId(firebaseUserId);
+          console.log("Current user Firebase ID:", firebaseUserId);
 
           const response = await ApiHandler.get(
             `/Users/firebase/${firebaseUserId}`
           );
           if (response) {
             setCurrentUserId(response);
+            console.log("Current user ID:", response);
           }
         } else {
           navigate("/login");
         }
       } catch (error) {
+        console.error("Error fetching user data:", error);
         setError("Failed to fetch user data");
       }
     };
@@ -89,8 +94,10 @@ const ChatPage = () => {
         );
         if (response) {
           setRenterFirebaseId(response);
+          console.log("Renter Firebase ID:", response);
         }
       } catch (error) {
+        console.error("Error fetching renter data:", error);
         setError("Failed to fetch renter data");
       }
     };
@@ -101,17 +108,28 @@ const ChatPage = () => {
   const generatedChatId =
     currentUserId && renterId ? `chat_${currentUserId}_${renterId}` : null;
 
-  // Fetch messages once we have both user IDs
+  // Fetch messages once we have both user IDs - EXACTLY like mobile
   useEffect(() => {
     if (!currentUserFirebaseId || !renterFirebaseId) return;
 
     setLoading(true);
+    console.log("Finding messages between users:", {
+      currentUserFirebaseId,
+      renterFirebaseId,
+    });
+
     findMessagesBetweenUsers(currentUserFirebaseId, renterFirebaseId)
       .then((fetchedMessages) => {
-        setMessages(fetchedMessages);
+        if (fetchedMessages && fetchedMessages.length > 0) {
+          console.log(`Found ${fetchedMessages.length} messages between users`);
+          setMessages(fetchedMessages);
+        } else {
+          console.log("No messages found between these users");
+        }
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Error in direct message fetching:", err);
         setError("Failed to load messages");
         setLoading(false);
       });
@@ -160,82 +178,121 @@ const ChatPage = () => {
     return "Message content unavailable";
   };
 
-  // Send a new message
-  const handleSendMessage = (message) => {
-    if (!currentUserId || !renterFirebaseId || !generatedChatId) {
-      setError("Cannot send message: Missing user IDs");
+  // Send a new message - EXACTLY matching mobile implementation in useChat.jsx
+  const handleSendMessage = async (message) => {
+    if (!generatedChatId || !currentUserFirebaseId || !renterFirebaseId) {
+      setError("Cannot send message: Missing required IDs");
       return;
     }
 
     try {
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-      const senderEmail = currentUser ? currentUser.email : null;
-      const tempId = `local_${Date.now()}`;
+      console.log("Sending message:", message);
 
-      // Create message object
+      // Add a temporary message to UI for better UX (web-specific)
+      const tempId = `temp_${Date.now()}`;
+      const tempMessage = {
+        id: tempId,
+        text: message,
+        senderId: currentUserFirebaseId,
+        senderEmail: getAuth().currentUser?.email || "",
+        timestamp: { seconds: Math.floor(Date.now() / 1000) },
+        isPending: true,
+      };
+
+      setMessages((prev) => [...prev, tempMessage]);
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+      // Create message data object EXACTLY like mobile
       const messageData = {
         text: message,
         senderId: currentUserFirebaseId,
-        senderEmail: senderEmail,
+        senderEmail: getAuth().currentUser?.email || "",
         receiverId: renterFirebaseId,
         timestamp: new Date(),
       };
 
-      // Immediately add to UI with pending status
-      const localMessage = {
-        id: tempId,
-        ...messageData,
-        timestamp: {
-          seconds: Math.floor(Date.now() / 1000),
-          nanoseconds: 0,
-        },
-        isPending: true,
-      };
+      // Send the message - EXACTLY like mobile
+      await sendMessage(generatedChatId, messageData, currentUserFirebaseId);
+      console.log("Message sent successfully");
 
-      setMessages((prevMessages) => [...prevMessages, localMessage]);
+      // Update UI to show message sent
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === tempId ? { ...msg, isPending: false } : msg
+        )
+      );
 
-      // Scroll to bottom
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 50);
+      // Send notification to receiver - EXACTLY like mobile useChat.jsx
+      try {
+        const receiverId = renterFirebaseId; // Using the receiverId from messageData
 
-      // Send to Firebase
-      sendMessage(generatedChatId, messageData, currentUserFirebaseId)
-        .then(() => {
-          // Update pending status
-          setMessages((prevMessages) =>
-            prevMessages.map((msg) =>
-              msg.id === tempId ? { ...msg, isPending: false } : msg
-            )
+        const notificationTitle = "New Message";
+        const notificationBody = `You have a new message from ${
+          getAuth().currentUser?.email || "a user"
+        }`;
+
+        // Additional data EXACTLY like mobile useChat.jsx
+        const additionalData = {
+          chatId: generatedChatId,
+          senderId: currentUserFirebaseId,
+          receiverId: receiverId,
+          screen: "Chat",
+          action: "view_chat",
+          timestamp: new Date().toISOString(),
+        };
+
+        // Send notification EXACTLY like mobile useChat.jsx
+        await sendNotificationToUser(
+          receiverId,
+          notificationTitle,
+          notificationBody,
+          additionalData
+        );
+
+        console.log("Message notification sent to user:", receiverId);
+      } catch (notificationError) {
+        console.error("Error sending message notification:", notificationError);
+        // Don't block the flow if notification fails
+      }
+
+      // After sending, refresh messages - EXACTLY like mobile useChat.jsx
+      setTimeout(async () => {
+        if (currentUserFirebaseId && renterFirebaseId) {
+          console.log(
+            "Refreshing messages between",
+            currentUserFirebaseId,
+            "and",
+            renterFirebaseId
           );
 
-          // Refresh messages after a delay
-          setTimeout(() => {
-            findMessagesBetweenUsers(
-              currentUserFirebaseId,
-              renterFirebaseId
-            ).then((updatedMessages) => {
-              setMessages(updatedMessages);
-              setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-              }, 50);
-            });
-          }, 300);
-        })
-        .catch((err) => {
-          // Mark message as failed
-          setMessages((prevMessages) =>
-            prevMessages.map((msg) =>
-              msg.id === tempId
-                ? { ...msg, isPending: false, failed: true }
-                : msg
-            )
+          const updatedMessages = await findMessagesBetweenUsers(
+            currentUserFirebaseId,
+            renterFirebaseId
           );
-          setError("Failed to send message");
-        });
-    } catch (error) {
-      setError("Failed to process message");
+
+          if (updatedMessages && updatedMessages.length > 0) {
+            console.log(
+              "Found",
+              updatedMessages.length,
+              "messages after refresh"
+            );
+            setMessages(updatedMessages);
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }
+        }
+      }, 500); // Same 500ms delay as mobile
+    } catch (err) {
+      console.error("Error sending message:", err);
+      setError("Failed to send message");
+
+      // Update UI to show message failed
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id.startsWith("temp_")
+            ? { ...msg, isPending: false, failed: true }
+            : msg
+        )
+      );
     }
   };
 

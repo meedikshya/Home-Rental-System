@@ -5,7 +5,7 @@ import {
   sendMessage,
   findMessagesBetweenUsers,
 } from "../firebaseConfig";
-import { sendNotificationToUser } from "../firebaseNotification"; // Import the notification function
+import { sendNotificationToUser } from "../firebaseNotification";
 
 // Updated to match web version with additional parameters
 const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
@@ -151,7 +151,7 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
             setMessages(updatedMessages);
           }
         }
-      }, 500); // Small delay to ensure Firebase has processed the write
+      }, 500);
     } catch (err) {
       console.error("Error sending message:", err);
       setError("Failed to send message");

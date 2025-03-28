@@ -14,6 +14,7 @@ import {
   FiDollarSign,
   FiClock,
   FiCircle,
+  FiMessageCircle,
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 
@@ -122,6 +123,12 @@ const NotificationPage = ({
           color: "bg-yellow-500",
           text: "Payment",
         };
+      case "view_chat":
+        return {
+          icon: <FiMessageCircle size={14} />,
+          color: "bg-teal-500",
+          text: "Message",
+        };
       default:
         return {
           icon: <FiBell size={14} />,
@@ -222,6 +229,17 @@ const NotificationPage = ({
         case "payment_received":
           console.log(`Navigating to payment: ${notification.data.paymentId}`);
           navigate(`/landlord/payment/${notification.data.paymentId}`);
+          break;
+
+        case "view_chat":
+          console.log(`Navigating to chat: ${notification.data.chatId}`);
+          navigate(`/landlord/chat/${notification.data.chatId}`, {
+            state: {
+              senderId: notification.data.senderId,
+              receiverId: notification.data.receiverId,
+              actualReceiverId: notification.data.actualReceiverId,
+            },
+          });
           break;
 
         default:

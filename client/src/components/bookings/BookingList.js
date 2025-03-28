@@ -18,6 +18,8 @@ import {
   FaThumbsDown,
 } from "react-icons/fa";
 import Agreement from "./Agreement.js";
+import { sendNotificationToUser } from "../../services/Firebase-notification.js";
+import { getUserDataFromFirebaseId } from "../../context/AuthContext.js";
 
 const BookingList = () => {
   const [landlordId, setLandlordId] = useState(null);
@@ -145,8 +147,6 @@ const BookingList = () => {
                 price: propertyResponse.price,
                 kitchen: propertyResponse.kitchen,
               };
-
-              // Removed image fetching code that was causing 404 errors
             }
           }
         } catch (error) {
@@ -214,11 +214,12 @@ const BookingList = () => {
     setIsModalOpen(true);
   };
 
-  // Handle accept agreement - UPDATED to use PUT /api/Agreements/{id}
+  // Handle accept agreement
+
   const handleAcceptAgreement = async (agreementId) => {
     try {
       setProcessingIds((prev) => [...prev, agreementId]);
-      console.log(`Attempting to accept agreement ${agreementId}...`);
+      console.log(`Accepting agreement ${agreementId}...`);
 
       // Find agreement to update
       const agreementToUpdate = agreements.find(
@@ -237,12 +238,11 @@ const BookingList = () => {
         renterId: agreementToUpdate.renterId,
         startDate: agreementToUpdate.startDate,
         endDate: agreementToUpdate.endDate,
-        status: "Approved", // Use the correct status value from your database enum
+        status: "Approved",
         signedAt: agreementToUpdate.signedAt,
       };
 
-      console.log("Sending update payload:", updatePayload);
-
+      // Update agreement status
       const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
       const response = await ApiHandler.put(
         `/Agreements/${agreementId}`,
@@ -254,8 +254,6 @@ const BookingList = () => {
         }
       );
 
-      console.log("Update response:", response);
-
       // Update local state
       setAgreements((prev) =>
         prev.map((agreement) =>
@@ -264,6 +262,60 @@ const BookingList = () => {
             : agreement
         )
       );
+
+      // SEND NOTIFICATION - EXACTLY LIKE agreement-page.jsx
+      try {
+        // Get property details
+        const property = propertyDetails[agreementToUpdate.bookingId] || {};
+        const propertyAddress = property.address || "your requested property";
+
+        // Get Firebase ID
+        const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
+        const renterResponse = await ApiHandler.get(
+          `/Users/firebaseByUserId/${agreementToUpdate.renterId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const renterFirebaseId = renterResponse;
+
+        if (!renterFirebaseId) {
+          console.log("Could not find renter's Firebase ID");
+          return;
+        }
+
+        // Notification content
+        const notificationTitle = "Agreement Approved";
+        const notificationBody = `Your lease agreement for ${propertyAddress} has been approved.`;
+
+        // Simple additionalData structure - EXACTLY like mobile
+        const additionalData = {
+          propertyId: property.propertyId,
+          bookingId: agreementToUpdate.bookingId,
+          agreementId: agreementToUpdate.agreementId,
+          screen: "Agreement",
+          action: "view_agreement",
+          timestamp: new Date().toISOString(),
+        };
+
+        // Direct notification call - keeping it simple
+        await sendNotificationToUser(
+          renterFirebaseId,
+          notificationTitle,
+          notificationBody,
+          additionalData
+        );
+
+        console.log(
+          "Agreement approval notification sent to:",
+          renterFirebaseId
+        );
+      } catch (notificationError) {
+        console.error("Error sending notification:", notificationError);
+      }
 
       toast.success("Agreement accepted successfully");
     } catch (error) {
@@ -276,7 +328,7 @@ const BookingList = () => {
     }
   };
 
-  // Handle reject agreement - UPDATED to use PUT /api/Agreements/{id}
+  // Handle reject agreement
   const handleRejectAgreement = async (agreementId) => {
     if (!window.confirm("Are you sure you want to reject this agreement?")) {
       return;
@@ -284,7 +336,7 @@ const BookingList = () => {
 
     try {
       setProcessingIds((prev) => [...prev, agreementId]);
-      console.log(`Attempting to reject agreement ${agreementId}...`);
+      console.log(`Rejecting agreement ${agreementId}...`);
 
       // Find agreement to update
       const agreementToUpdate = agreements.find(
@@ -303,12 +355,11 @@ const BookingList = () => {
         renterId: agreementToUpdate.renterId,
         startDate: agreementToUpdate.startDate,
         endDate: agreementToUpdate.endDate,
-        status: "Rejected", // Use the correct status value from your database enum
+        status: "Rejected",
         signedAt: agreementToUpdate.signedAt,
       };
 
-      console.log("Sending update payload:", updatePayload);
-
+      // Update agreement status
       const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
       const response = await ApiHandler.put(
         `/Agreements/${agreementId}`,
@@ -320,8 +371,6 @@ const BookingList = () => {
         }
       );
 
-      console.log("Update response:", response);
-
       // Update local state
       setAgreements((prev) =>
         prev.map((agreement) =>
@@ -330,6 +379,60 @@ const BookingList = () => {
             : agreement
         )
       );
+
+      // SEND NOTIFICATION - EXACTLY LIKE agreement-page.jsx
+      try {
+        // Get property details
+        const property = propertyDetails[agreementToUpdate.bookingId] || {};
+        const propertyAddress = property.address || "your requested property";
+
+        // Get Firebase ID
+        const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
+        const renterResponse = await ApiHandler.get(
+          `/Users/firebaseByUserId/${agreementToUpdate.renterId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const renterFirebaseId = renterResponse;
+
+        if (!renterFirebaseId) {
+          console.log("Could not find renter's Firebase ID");
+          return;
+        }
+
+        // Notification content
+        const notificationTitle = "Agreement Rejected";
+        const notificationBody = `Your lease agreement for ${propertyAddress} has been rejected by the landlord.`;
+
+        // Simple additionalData structure - EXACTLY like mobile
+        const additionalData = {
+          propertyId: property.propertyId,
+          bookingId: agreementToUpdate.bookingId,
+          agreementId: agreementToUpdate.agreementId,
+          screen: "Agreement",
+          action: "view_agreement",
+          timestamp: new Date().toISOString(),
+        };
+
+        // Direct notification call - keeping it simple
+        await sendNotificationToUser(
+          renterFirebaseId,
+          notificationTitle,
+          notificationBody,
+          additionalData
+        );
+
+        console.log(
+          "Agreement rejection notification sent to:",
+          renterFirebaseId
+        );
+      } catch (notificationError) {
+        console.error("Error sending notification:", notificationError);
+      }
 
       toast.success("Agreement rejected");
     } catch (error) {

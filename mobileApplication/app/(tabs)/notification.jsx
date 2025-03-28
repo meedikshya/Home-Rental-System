@@ -1,61 +1,39 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
-  Alert,
+  StatusBar,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import {
-  Ionicons,
-  FontAwesome,
-  MaterialCommunityIcons,
-  Feather,
-} from "@expo/vector-icons";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import { FIREBASE_DB } from "../../firebaseConfig.js";
+import { Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   listenForUserNotifications,
   markNotificationAsRead,
   directFetchNotifications,
 } from "../../firebaseNotification.js";
-import { getUserDataFromFirebase } from "../../context/AuthContext"; // Import getUserDataFromFirebase
 import { getAuth } from "firebase/auth";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import SafeAreaInsets
+import { useRouter } from "expo-router";
 
-const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
-  // Remove useAuth and add userId prop
+const NotificationScreen = () => {
   const [notifications, setNotifications] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
-  const navigation = useNavigation();
-  const insets = useSafeAreaInsets(); // Get the safe area insets
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
 
-  // Calculate unread count and expose it to parent component
   const unreadCount = useMemo(() => {
-    const count = notifications.filter(
-      (notification) => !notification.read
-    ).length;
+    return notifications.filter((notification) => !notification.read).length;
+  }, [notifications]);
 
-    // If the callback exists, call it with the updated count
-    if (onUnreadCountChange && typeof onUnreadCountChange === "function") {
-      onUnreadCountChange(count);
-    }
-
-    return count;
-  }, [notifications, onUnreadCountChange]);
-
-  // Get notification type icon and color
   const getNotificationTypeInfo = (notification) => {
     if (!notification.data || !notification.data.action) {
       return {
         icon: "bell",
-        iconType: "Feather",
         color: "#6B7280",
+        bgColor: "#F3F4F6",
         text: "Notification",
       };
     }
@@ -64,42 +42,48 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
       case "view_agreement":
         return {
           icon: "file-text",
-          iconType: "Feather",
           color: "#10B981",
+          bgColor: "#D1FAE5",
           text: "Agreement",
         };
       case "booking_request":
         return {
           icon: "calendar",
-          iconType: "Feather",
           color: "#3B82F6",
+          bgColor: "#DBEAFE",
           text: "Booking",
         };
       case "property_update":
         return {
           icon: "home",
-          iconType: "Feather",
           color: "#8B5CF6",
+          bgColor: "#EDE9FE",
           text: "Property",
         };
       case "payment_received":
         return {
           icon: "dollar-sign",
-          iconType: "Feather",
           color: "#F59E0B",
+          bgColor: "#FEF3C7",
           text: "Payment",
+        };
+      case "view_chat":
+        return {
+          icon: "message-circle",
+          color: "#14B8A6",
+          bgColor: "#CCFBF1",
+          text: "Message",
         };
       default:
         return {
           icon: "bell",
-          iconType: "Feather",
           color: "#6B7280",
+          bgColor: "#F3F4F6",
           text: notification.data.action || "Notification",
         };
     }
   };
 
-  // Format timestamp to relative time
   const formatTimeAgo = (timestamp) => {
     if (!timestamp) return "";
 
@@ -107,231 +91,166 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
     const date = new Date(timestamp);
     const seconds = Math.floor((now - date) / 1000);
 
-    // Less than a minute
-    if (seconds < 60) {
-      return "just now";
-    }
-
-    // Less than an hour
+    if (seconds < 60) return "just now";
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) {
-      return `${minutes}m ago`;
-    }
-
-    // Less than a day
+    if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) {
-      return `${hours}h ago`;
-    }
-
-    // Less than a week
+    if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
-    if (days < 7) {
-      return `${days}d ago`;
-    }
+    if (days < 7) return `${days}d ago`;
 
-    // Just return the date MM/DD/YY format
     return `${date.getMonth() + 1}/${date.getDate()}/${date
       .getFullYear()
       .toString()
       .substr(-2)}`;
   };
 
-  // Handle notification press with navigation
   const handleNotificationPress = (notification) => {
-    console.log("Notification pressed:", notification);
-
-    // Update UI immediately
-    setNotifications((prevNotifications) =>
-      prevNotifications.map((n) =>
-        n.id === notification.id ? { ...n, read: true } : n
-      )
+    // Mark as read in UI and Firebase
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
     );
+    markNotificationAsRead(notification.id).catch((error) => {
+      console.error("Error marking notification as read:", error);
+    });
 
-    // Mark as read in Firebase (don't block navigation if this fails)
-    markNotificationAsRead(notification.id)
-      .then((success) => {
-        if (success) {
-          console.log("Successfully marked notification as read");
-        }
-      })
-      .catch((error) => {
-        console.error("Error marking notification as read:", error);
-      });
-
-    // Handle navigation based on notification type
+    // Handle navigation with router
     if (notification.data) {
-      console.log(
-        "Processing notification data for navigation:",
-        notification.data
-      );
-
       switch (notification.data.action) {
         case "view_agreement":
-          navigation.navigate("Agreement", {
-            id: notification.data.agreementId,
-          });
-          break;
-
-        case "booking_request":
-          navigation.navigate("Booking", {
-            id: notification.data.bookingId,
+          router.push({
+            pathname: "/(pages)/agreement-page",
+            params: {
+              agreementId: notification.data.agreementId,
+            },
           });
           break;
 
         case "property_update":
-          navigation.navigate("Property", {
-            id: notification.data.propertyId,
+          router.push({
+            pathname: "/(pages)/property",
+            params: { id: notification.data.propertyId },
           });
           break;
 
         case "payment_received":
-          navigation.navigate("Payment", {
-            id: notification.data.paymentId,
+          router.push({
+            pathname: "/(pages)/payment",
+            params: { id: notification.data.paymentId },
           });
+          break;
+
+        case "view_chat":
+          if (notification.data.chatId) {
+            router.push({
+              pathname: "/(tabs)/chat",
+              params: {
+                chatId: notification.data.chatId,
+                senderId: notification.data.senderId,
+                receiverId: notification.data.receiverId,
+              },
+            });
+          }
           break;
 
         default:
           if (notification.data.screen) {
-            navigation.navigate(
-              notification.data.screen,
-              notification.data.params
-            );
+            router.push({
+              pathname: notification.data.screen,
+              params: notification.data.params || {},
+            });
           }
       }
     }
   };
 
-  // Fetch current user ID from Firebase
   useEffect(() => {
-    const fetchCurrentUserId = async () => {
-      try {
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
 
-        if (currentUser) {
-          const userId = await getUserDataFromFirebase();
-          console.log("Fetched Firebase User ID:", userId);
-          if (userId) {
-            setCurrentUserId(Number(userId));
-          } else {
-            setErrorMessage("Unable to fetch user data.");
-          }
-        } else {
-          console.log("No current user found.");
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("Error fetching user data from Firebase:", error);
-        setErrorMessage("Unable to fetch user data.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCurrentUserId();
-  }, []);
-
-  // Listen for notifications
-  useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUser) {
+      setErrorMessage("Not logged in");
+      setLoading(false);
       return () => {};
     }
 
-    setLoading(true);
-    let unsubscribeFunc = null;
+    const firebaseId = currentUser.uid;
+    let unsubscribe = null;
 
     try {
-      const userIdString = currentUserId.toString();
-
-      unsubscribeFunc = listenForUserNotifications((fetchedNotifications) => {
+      unsubscribe = listenForUserNotifications((fetchedNotifications) => {
         setNotifications(fetchedNotifications);
         setLoading(false);
-      }, userIdString);
+      }, firebaseId);
     } catch (error) {
-      console.error("Error setting up notification listener:", error);
-      setErrorMessage("Failed to load notifications. Trying direct fetch...");
+      directFetchNotifications(firebaseId)
+        .then(setNotifications)
+        .catch(() => setErrorMessage("Could not load notifications"))
+        .finally(() => setLoading(false));
 
-      // Try direct fetch as fallback
-      directFetchNotifications(currentUserId)
-        .then((fetchedNotifications) => {
-          setNotifications(fetchedNotifications);
-        })
-        .catch((error) => {
-          console.error("Error with direct fetch:", error);
-          setErrorMessage("Could not load notifications");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-
-      unsubscribeFunc = () => {};
+      unsubscribe = () => {};
     }
 
     return () => {
-      try {
-        if (unsubscribeFunc && typeof unsubscribeFunc === "function") {
-          unsubscribeFunc();
-        }
-      } catch (error) {
-        console.error("Error unsubscribing:", error);
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
       }
     };
-  }, [currentUserId]);
+  }, []);
 
-  // Render notification item
   const renderNotificationItem = ({ item: notification }) => {
-    const { icon, iconType, color, text } =
+    const { icon, color, bgColor, text } =
       getNotificationTypeInfo(notification);
 
     return (
       <TouchableOpacity
-        className={`notificationItem ${
-          notification.read ? "bg-white" : "bg-blue-50"
-        } border border-gray-200 rounded-lg mb-2 flex-row overflow-hidden`}
+        className={`flex-row border rounded-lg overflow-hidden mb-2 ${
+          notification.read
+            ? "bg-white border-gray-100"
+            : "bg-blue-50 border-blue-100"
+        }`}
         onPress={() => handleNotificationPress(notification)}
       >
-        {/* Colored bar indicator */}
-        <View className={`typeIndicator ${color}`} />
+        <View style={{ backgroundColor: color }} className="w-1 h-full" />
 
-        <View className="notificationContent flex-1 p-3">
-          {/* Header with title and time */}
-          <View className="notificationHeader flex-row justify-between mb-1">
-            <View className="titleContainer flex-row items-center flex-1">
-              {iconType === "Feather" && (
-                <Feather
-                  name={icon}
-                  size={14}
-                  color={color}
-                  style={styles.icon}
-                />
-              )}
-              <Text className="title text-gray-800 font-semibold text-sm flex-1">
+        <View className="flex-1 p-3">
+          <View className="flex-row justify-between mb-1">
+            <View className="flex-1 flex-row items-center">
+              <Feather name={icon} size={14} color={color} className="mr-1.5" />
+              <Text
+                className="text-sm font-semibold text-gray-800 flex-1"
+                numberOfLines={1}
+              >
                 {notification.title}
               </Text>
             </View>
 
-            <View className="metaContainer flex-row items-center">
-              {!notification.read && <View className="unreadDot" />}
-              <View className="timeContainer flex-row items-center">
+            <View className="flex-row items-center">
+              {!notification.read && (
+                <View className="w-2 h-2 rounded-full bg-blue-500 mr-1.5" />
+              )}
+              <View className="flex-row items-center">
                 <Feather name="clock" size={10} color="#9CA3AF" />
-                <Text className="timeText text-xs text-gray-500 ml-1">
+                <Text className="text-xs text-gray-400 ml-1">
                   {formatTimeAgo(notification.createdAt)}
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* Body */}
-          <Text className="body text-gray-700 text-xs ml-5 line-clamp-2">
+          <Text className="text-xs text-gray-600 ml-5 mb-1" numberOfLines={2}>
             {notification.body}
           </Text>
 
-          {/* Tag */}
           {notification.data && notification.data.action && (
-            <View className="tagContainer ml-5">
-              <View className="tag bg-gray-100 rounded-md px-2 py-1">
-                <Text className="tagText text-gray-500 text-xs">{text}</Text>
+            <View className="ml-5">
+              <View
+                style={{ backgroundColor: bgColor }}
+                className="self-start px-2 py-0.5 rounded"
+              >
+                <Text style={{ color }} className="text-xs font-medium">
+                  {text}
+                </Text>
               </View>
             </View>
           )}
@@ -340,80 +259,59 @@ const NotificationScreen = ({ userId: passedUserId, onUnreadCountChange }) => {
     );
   };
 
-  // Empty state component
-  const EmptyState = () => (
-    <View className="emptyState flex-1 justify-center items-center p-6">
-      <Feather name="bell" size={32} color="#D1D5DB" className="emptyIcon" />
-      <Text className="emptyText text-sm text-gray-600 mb-1">
-        No notifications yet
-      </Text>
-      <Text className="emptySubtext text-xs text-gray-500 text-center">
-        You'll see notifications here when they arrive
-      </Text>
-    </View>
-  );
-
   return (
-    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
-      <Text className="text-2xl font-bold text-center mb-6 text-[#20319D] mt-4">
+    <View className="flex-1 bg-white px-4" style={{ paddingTop: insets.top }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      <Text className="text-2xl font-bold text-center mb-6 mt-2 text-[#20319D]">
         Notifications
       </Text>
-      {/* Header with unread count */}
+
       {unreadCount > 0 && (
-        <View className="unreadBanner flex-row items-center p-3 bg-blue-50 rounded-lg mb-3">
+        <View className="flex-row items-center bg-blue-50 rounded-lg p-3 mb-3">
           <Feather name="bell" size={12} color="#2563EB" />
-          <Text className="unreadText text-sm font-medium text-blue-700 ml-2">
+          <Text className="text-sm font-medium text-blue-600 ml-2">
             You have {unreadCount} unread notification
             {unreadCount !== 1 ? "s" : ""}
           </Text>
         </View>
       )}
 
-      {/* Error Message */}
       {errorMessage && (
-        <View className="errorContainer p-3 bg-red-100 rounded-lg mb-3">
-          <Text className="errorText text-sm text-red-700">{errorMessage}</Text>
+        <View className="bg-red-100 rounded-lg p-3 mb-3">
+          <Text className="text-sm text-red-600">{errorMessage}</Text>
         </View>
       )}
 
-      {/* Content */}
       {loading ? (
-        <View className="loadingContainer flex-1 justify-center items-center p-6">
+        <View className="flex-1 justify-center items-center p-6">
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text className="loadingText text-sm text-gray-600 mt-3">
-            Loading...
-          </Text>
+          <Text className="mt-3 text-sm text-gray-500">Loading...</Text>
         </View>
       ) : (
         <FlatList
           data={notifications}
           renderItem={renderNotificationItem}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={EmptyState}
+          className="flex-grow"
+          contentContainerStyle={{ paddingBottom: 16 }}
+          ListEmptyComponent={() => (
+            <View className="flex-1 justify-center items-center p-6">
+              <Feather name="bell" size={32} color="#D1D5DB" />
+              <Text className="text-sm text-gray-500 mt-3">
+                No notifications yet
+              </Text>
+              <Text className="text-xs text-gray-400 text-center mt-1">
+                You'll see notifications here when they arrive
+              </Text>
+            </View>
+          )}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View className="separator h-2" />}
+          ItemSeparatorComponent={() => <View className="h-2" />}
         />
       )}
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  listContent: {
-    flexGrow: 1,
-  },
-  typeIndicator: {
-    width: 4,
-    height: "100%",
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#3B82F6",
-    marginRight: 6,
-  },
-});
 
 export default NotificationScreen;

@@ -33,7 +33,7 @@ const FIREBASE_APP = initializeApp(firebaseConfig);
 const FIREBASE_AUTH = getAuth(FIREBASE_APP);
 const FIREBASE_DB = getFirestore(FIREBASE_APP);
 
-// Initialize Messaging (add this after your FIREBASE_DB initialization)
+// Initialize Messaging
 let messaging = null;
 isSupported().then((isSupported) => {
   if (isSupported) {
@@ -42,7 +42,6 @@ isSupported().then((isSupported) => {
 });
 
 const getMessages = (chatId, setMessages) => {
-  // Check if chat exists first
   getDoc(doc(FIREBASE_DB, "chats", chatId))
     .then((chatDoc) => {
       if (chatDoc.exists()) {
@@ -84,7 +83,6 @@ const findMessagesBetweenUsers = async (
   let messages = [];
 
   try {
-    // Query all messages across all chats
     const messagesGroupRef = collectionGroup(FIREBASE_DB, "messages");
 
     // Find messages where: currentUser → partnerUser
@@ -174,9 +172,7 @@ const findMessagesBetweenUsers = async (
           }
         }
       }
-    } catch (err) {
-      // Continue with the messages we already found
-    }
+    } catch (err) {}
 
     // Sort messages by timestamp
     messages.sort((a, b) => {
@@ -216,7 +212,6 @@ const sendMessage = async (chatId, messageData, senderFirebaseId) => {
     let finalMessageData = {};
 
     if (typeof messageData === "string") {
-      // Simple string message
       finalMessageData = {
         text: messageData,
         senderId: senderFirebaseId,

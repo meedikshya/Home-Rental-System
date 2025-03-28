@@ -5,6 +5,7 @@ import {
   sendMessage,
   findMessagesBetweenUsers,
 } from "../services/Firebase-config.js";
+import { sendNotificationToUser } from "../services/Firebase-notification.js";
 
 const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
   const [messages, setMessages] = useState([]);
@@ -45,10 +46,20 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
   useEffect(() => {
     if (user && currentUserFirebaseId && partnerFirebaseId) {
       setLoading(true);
+      console.log("Finding messages between users:", {
+        currentUserFirebaseId,
+        partnerFirebaseId,
+      });
+
       findMessagesBetweenUsers(currentUserFirebaseId, partnerFirebaseId)
         .then((fetchedMessages) => {
-          if (fetchedMessages.length > 0) {
+          if (fetchedMessages && fetchedMessages.length > 0) {
+            console.log(
+              `Found ${fetchedMessages.length} messages between users`
+            );
             setMessages(fetchedMessages);
+          } else {
+            console.log("No messages found between these users");
           }
           setLoading(false);
         })
@@ -59,14 +70,17 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
     }
   }, [currentUserFirebaseId, partnerFirebaseId, user]);
 
+  // Enhanced message sending with notification - EXACTLY like mobile version
   const sendNewMessage = async (messageData) => {
-    if (!user) {
-      setError("User is not logged in");
+    if (!user || !chatId) {
+      setError("User is not logged in or chat ID is missing");
       return;
     }
 
     try {
-      // If messageData is just a string, convert to proper object
+      console.log("Sending message:", messageData);
+
+      // Format message data based on type
       const formattedMessage =
         typeof messageData === "string" ? { text: messageData } : messageData;
 
@@ -75,22 +89,82 @@ const useChat = (chatId, currentUserFirebaseId, partnerFirebaseId) => {
         ...formattedMessage,
         senderEmail: formattedMessage.senderEmail || user.email,
         timestamp: formattedMessage.timestamp || new Date(),
+        receiverId: partnerFirebaseId, // Make sure receiverId is included
       };
 
       // Send the message
       await sendMessage(chatId, completeMessage, user.uid);
+      console.log("Message sent successfully");
 
-      // Optionally refresh messages
-      if (currentUserFirebaseId && partnerFirebaseId) {
-        const updatedMessages = await findMessagesBetweenUsers(
-          currentUserFirebaseId,
-          partnerFirebaseId
+      // NOTIFICATION SECTION - EXACTLY matching mobile implementation
+      try {
+        // Get receiverId from partner's Firebase ID
+        const receiverId = partnerFirebaseId;
+
+        if (!receiverId) {
+          console.error("No receiver ID available for notification");
+          return;
+        }
+
+        console.log("Sending notification to:", receiverId);
+
+        const notificationTitle = "New Message";
+        const notificationBody = `You have a new message from ${
+          user.email || "a user"
+        }`;
+
+        // Additional data to be included with the notification - EXACT match to mobile
+        const additionalData = {
+          chatId: chatId,
+          senderId: currentUserFirebaseId || user.uid,
+          receiverId: receiverId,
+          screen: "Chat", // Screen to navigate to when notification is tapped
+          action: "view_chat",
+          timestamp: new Date().toISOString(),
+        };
+
+        // Send the notification
+        await sendNotificationToUser(
+          receiverId,
+          notificationTitle,
+          notificationBody,
+          additionalData
         );
-        setMessages(updatedMessages);
+
+        console.log("Message notification sent to user:", receiverId);
+      } catch (notificationError) {
+        console.error("Error sending message notification:", notificationError);
+        // Don't throw here - just like mobile, we continue even if notification fails
       }
+
+      // After sending, refresh messages with timeout - EXACT match to mobile
+      setTimeout(async () => {
+        if (currentUserFirebaseId && partnerFirebaseId) {
+          console.log(
+            "Refreshing messages between",
+            currentUserFirebaseId,
+            "and",
+            partnerFirebaseId
+          );
+
+          const updatedMessages = await findMessagesBetweenUsers(
+            currentUserFirebaseId,
+            partnerFirebaseId
+          );
+
+          if (updatedMessages && updatedMessages.length > 0) {
+            console.log(
+              "Found",
+              updatedMessages.length,
+              "messages after refresh"
+            );
+            setMessages(updatedMessages);
+          }
+        }
+      }, 500); // Same 500ms delay as mobile
     } catch (err) {
       console.error("Error sending message:", err);
-      setError("Error sending message");
+      setError("Failed to send message");
     }
   };
 

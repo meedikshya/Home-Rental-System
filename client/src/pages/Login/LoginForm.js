@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
 import ApiHandler from "../../api/ApiHandler.js";
+import { useAuth } from "../../context/AuthContext.js";
 
 const getUserRoleFromToken = (token) => {
   if (!token) return null;
@@ -30,6 +31,52 @@ export const LoginForm = () => {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [error, setError] = useState("");
+  const { currentUser, loading } = useAuth();
+  const [loginAttempt, setLoginAttempt] = useState(false);
+
+  // Add a ref to track if logout has already been performed
+  const logoutPerformedRef = useRef(false);
+
+  // Auto-logout when navigating to login page while already authenticated
+  useEffect(() => {
+    // Skip effect during login attempts and initial loading
+    if (loginAttempt || loading || logoutPerformedRef.current) {
+      return;
+    }
+
+    // Only run if user is logged in and we're not in the middle of login process
+    if (currentUser && !isSubmitting) {
+      console.log(
+        "User already logged in but on login page. Performing auto-logout..."
+      );
+
+      // Set the ref to true to prevent double execution
+      logoutPerformedRef.current = true;
+
+      // Clear tokens and auth data
+      localStorage.removeItem("jwtToken");
+      localStorage.removeItem("user");
+      ApiHandler.removeToken();
+
+      // Sign out from Firebase
+      signOut(FIREBASE_AUTH)
+        .then(() => {
+          console.log("User signed out successfully");
+          // Use toastId to prevent duplicate toasts
+          toast.info("You have been signed out", {
+            toastId: "logout-notification",
+          });
+        })
+        .catch((error) => {
+          console.error("Sign-out error:", error);
+        });
+    }
+
+    // Cleanup function
+    return () => {
+      // Nothing needed here, the ref persists
+    };
+  }, [currentUser, loading, isSubmitting, loginAttempt]);
 
   const handleRegister = () => {
     navigate("/register");
@@ -56,6 +103,8 @@ export const LoginForm = () => {
     }
 
     setSubmitting(true);
+    // Set login attempt flag to prevent auto-logout
+    setLoginAttempt(true);
 
     try {
       const userCredential = await signInWithEmailAndPassword(
@@ -93,6 +142,7 @@ export const LoginForm = () => {
         ApiHandler.removeToken();
 
         setSubmitting(false);
+        setLoginAttempt(false);
         return;
       }
 
@@ -107,6 +157,9 @@ export const LoginForm = () => {
       localStorage.setItem("user", JSON.stringify(userData));
 
       toast.success(`Signed in successfully as ${userRole || "User"}`);
+
+      // Reset the logout performed ref since we're now intentionally logging in
+      logoutPerformedRef.current = false;
 
       // Role-based redirection
       if (userRole === "Landlord") {
@@ -142,6 +195,7 @@ export const LoginForm = () => {
 
       ApiHandler.removeToken();
       localStorage.removeItem("jwtToken");
+      setLoginAttempt(false);
     } finally {
       setSubmitting(false);
     }

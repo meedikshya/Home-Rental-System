@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LoginForm } from "./pages/Login/LoginForm.js";
 import { RegisterForm } from "./pages/Signup/RegisterForm.js";
+import { AuthProvider } from "./context/AuthContext.js";
 import UserInfo from "./pages/Signup/UserInfo.js";
 
 // Notification imports
@@ -83,78 +84,86 @@ function App() {
   }, []);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginForm />} />
-        <Route path="/register" element={<RegisterForm />} />
-        <Route path="/userinfo/:userId" element={<UserInfo />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/register" element={<RegisterForm />} />
+          <Route path="/userinfo/:userId" element={<UserInfo />} />
 
-        <Route
-          path="/admin/*"
-          element={
-            <RoleProtectedRoute requiredRole="Admin">
-              <LayoutAdmin>
-                <Routes>
-                  <Route path="dashboard" element={<Dashboard />} />
-                  <Route path="properties" element={<Properties />} />
-                  <Route path="bookings" element={<Bookings />} />
-                  <Route path="payments" element={<Payments />} />
-                  <Route path="analytics" element={<Analytics />} />
-                  <Route path="agreements" element={<Agreements />} />
-                  {/* Legacy admin panel as fallback */}
-                  <Route path="panel" element={<AdminPanel />} />
-                  {/* Default admin route - redirect to dashboard */}
-                  <Route path="*" element={<Dashboard />} />
-                </Routes>
-              </LayoutAdmin>
-            </RoleProtectedRoute>
-          }
-        />
+          <Route
+            path="/admin/*"
+            element={
+              <RoleProtectedRoute requiredRole="Admin">
+                <LayoutAdmin>
+                  <Routes>
+                    <Route path="dashboard" element={<Dashboard />} />
+                    <Route path="properties" element={<Properties />} />
+                    <Route path="bookings" element={<Bookings />} />
+                    <Route path="payments" element={<Payments />} />
+                    <Route path="analytics" element={<Analytics />} />
+                    <Route path="agreements" element={<Agreements />} />
+                    {/* Legacy admin panel as fallback */}
+                    <Route path="panel" element={<AdminPanel />} />
+                    {/* Default admin route - redirect to dashboard */}
+                    <Route path="*" element={<Dashboard />} />
+                  </Routes>
+                </LayoutAdmin>
+              </RoleProtectedRoute>
+            }
+          />
 
-        {/* Landlord Routes - Protected by Role */}
-        <Route
-          path="/landlord/*"
-          element={
-            <RoleProtectedRoute requiredRole="Landlord">
-              <Layout>
-                <Routes>
-                  <Route path="property" element={<Property />} />
-                  <Route path="booking" element={<Booking />} />
-                  {/* Add this new route for agreement details */}
-                  <Route path="booking/:agreementId" element={<Booking />} />
+          {/* Landlord Routes - Protected by Role */}
+          <Route
+            path="/landlord/*"
+            element={
+              <RoleProtectedRoute requiredRole="Landlord">
+                <Layout>
+                  <Routes>
+                    <Route path="property" element={<Property />} />
+                    <Route path="booking" element={<Booking />} />
+                    {/* Add this new route for agreement details */}
+                    <Route path="booking/:agreementId" element={<Booking />} />
 
-                  <Route path="chat" element={<Chat />} />
-                  <Route path="chat/:chatId" element={<ChatPage />} />
-                  <Route path="payment" element={<Payment />} />
-                  <Route path="home" element={<Home />} />
-                  <Route path="addproperty" element={<AddPropertyForm />} />
-                  <Route path="add-property" element={<AddPropertyDetails />} />
-                  <Route path="notifications" element={<NotificationPage />} />
-                  <Route
-                    path="upload-images/:propertyId"
-                    element={<UploadPropertyImages />}
-                  />
-                </Routes>
-              </Layout>
-            </RoleProtectedRoute>
-          }
-        />
+                    <Route path="chat" element={<Chat />} />
+                    <Route path="chat/:chatId" element={<ChatPage />} />
+                    <Route path="payment" element={<Payment />} />
+                    <Route path="home" element={<Home />} />
+                    <Route path="addproperty" element={<AddPropertyForm />} />
+                    <Route
+                      path="add-property"
+                      element={<AddPropertyDetails />}
+                    />
+                    <Route
+                      path="notifications"
+                      element={<NotificationPage />}
+                    />
+                    <Route
+                      path="upload-images/:propertyId"
+                      element={<UploadPropertyImages />}
+                    />
+                  </Routes>
+                </Layout>
+              </RoleProtectedRoute>
+            }
+          />
 
-        {/* Redirect old adminpanel URL to new dashboard */}
-        <Route
-          path="/adminpanel"
-          element={
-            <RoleProtectedRoute requiredRole="Admin">
-              <AdminPanel />
-            </RoleProtectedRoute>
-          }
-        />
+          {/* Redirect old adminpanel URL to new dashboard */}
+          <Route
+            path="/adminpanel"
+            element={
+              <RoleProtectedRoute requiredRole="Admin">
+                <AdminPanel />
+              </RoleProtectedRoute>
+            }
+          />
 
-        {/* Root route - also remove the login prop */}
-        <Route path="/" element={<LoginForm />} />
-      </Routes>
-      <ToastContainer />
-    </BrowserRouter>
+          {/* Root route - also remove the login prop */}
+          <Route path="/" element={<LoginForm />} />
+        </Routes>
+        <ToastContainer />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

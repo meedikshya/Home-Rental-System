@@ -3,6 +3,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 import { getAuth } from "firebase/auth";
 import SessionTimeoutProvider from "../../hooks/sessionProvider.js";
+import { useAuth } from "../../context/AuthContext.js"; // Import useAuth
 
 const getUserRoleFromToken = (token) => {
   if (!token) return null;
@@ -25,23 +26,30 @@ const RoleProtectedRoute = ({ children, requiredRole = "Landlord" }) => {
   const [isAuthorized, setIsAuthorized] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const location = useLocation();
+  const { currentUser, loading: authLoading } = useAuth(); // Get auth status from context
 
   useEffect(() => {
+    // Wait for AuthContext to finish loading
+    if (authLoading) {
+      return;
+    }
+
     const checkAuthorization = async () => {
       try {
-        // Check if user is logged in
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
-
+        // Use currentUser from AuthContext instead of checking auth directly
         if (!currentUser) {
+          console.log("No authenticated user found in AuthContext");
           setIsAuthorized(false);
           setIsLoading(false);
           return;
         }
 
+        console.log("User authenticated, checking JWT token");
+
         // Get JWT token
         const token = localStorage.getItem("jwtToken");
         if (!token) {
+          console.log("No JWT token found in localStorage");
           setIsAuthorized(false);
           setIsLoading(false);
           return;
@@ -67,17 +75,20 @@ const RoleProtectedRoute = ({ children, requiredRole = "Landlord" }) => {
     };
 
     checkAuthorization();
-  }, [requiredRole]);
+  }, [requiredRole, currentUser, authLoading]); // Add currentUser and authLoading as dependencies
 
-  if (isLoading) {
+  // Wait for both AuthContext and local loading state
+  if (authLoading || isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <p className="ml-2 text-blue-500">Verifying access...</p>
       </div>
     );
   }
 
   if (!isAuthorized) {
+    console.log("User not authorized, redirecting to login");
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 

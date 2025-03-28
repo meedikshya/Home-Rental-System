@@ -10,10 +10,8 @@ import {
   serverTimestamp,
   Timestamp,
   getDocs,
-  getDoc,
 } from "firebase/firestore";
 import { FIREBASE_DB, FIREBASE_AUTH } from "./Firebase-config.js";
-import { getUserDataFromFirebase } from "../context/AuthContext.js";
 
 // Request notification permission for browser
 export const requestNotificationPermission = async () => {
@@ -124,7 +122,8 @@ export const setupNotificationListeners = () => {
   }
 };
 
-// Send a notification to a specific user
+// Send a notification to a specific user - EXACTLY like mobile version
+// Send a notification to a specific user - EXACT MOBILE MATCH
 export const sendNotificationToUser = async (
   receiverId,
   title = "New Notification",
@@ -132,72 +131,39 @@ export const sendNotificationToUser = async (
   additionalData = {}
 ) => {
   try {
-    // Convert receiverId to string to ensure consistency
-    receiverId = receiverId.toString();
+    console.log("🟢 WEB APP: sendNotificationToUser called for:", receiverId);
 
-    // Get current user as sender
+    // MUST CONVERT to string to match mobile - this is critical
+    receiverId = String(receiverId);
+
+    // Get current user as sender - EXACTLY like mobile
     const senderId = FIREBASE_AUTH.currentUser?.uid || "system";
+    if (!senderId) {
+      console.error("❌ WEB APP: No user logged in, can't send notification");
+      return null;
+    }
 
-    // Store in Firebase with sender and receiver
+    console.log(
+      `🟢 WEB APP: Sending notification from ${senderId} to ${receiverId}`
+    );
+
+    // Store in Firebase with sender and receiver - EXACTLY like mobile
     const notificationId = await storeNotificationInFirebase(
       title,
       body,
       senderId,
       receiverId,
-      { ...additionalData, route: "/notifications" }
+      { ...additionalData, screen: additionalData.screen || "Notification" }
     );
 
-    console.log(`Notification sent from ${senderId} to ${receiverId}`);
+    console.log(`✅ WEB APP: Notification ID: ${notificationId}`);
     return notificationId;
   } catch (error) {
-    console.error("Error sending notification to user:", error);
+    console.error("❌ WEB APP ERROR sending notification:", error);
     return null;
   }
 };
-
-// Send a test notification (self-notification)
-export const sendTestNotification = async (
-  title = "Test Notification",
-  body = "This is a test notification"
-) => {
-  try {
-    // Get current user for both sender and receiver
-    const userId = getUserId();
-    if (!userId) {
-      console.error("No user ID available, can't send test notification");
-      return null;
-    }
-
-    // Store in Firebase - sending to self
-    const notificationId = await storeNotificationInFirebase(
-      title,
-      body,
-      userId.toString(),
-      userId.toString(),
-      {
-        route: "/profile",
-        action: "test_notification",
-        timestamp: new Date().toISOString(),
-      }
-    );
-
-    // Show browser notification if permission granted
-    if (Notification.permission === "granted") {
-      showBrowserNotification(title, body, "/favicon.ico", () => {
-        // Mark as read when clicked
-        markNotificationAsRead(notificationId);
-      });
-    }
-
-    console.log("Test notification sent and stored in Firebase");
-    return notificationId;
-  } catch (error) {
-    console.error("Error sending test notification:", error);
-    return null;
-  }
-};
-
-// Store notification in Firebase with sender and receiver
+// Store notification in Firebase - EXACT MOBILE MATCH
 export const storeNotificationInFirebase = async (
   title,
   body,
@@ -206,16 +172,29 @@ export const storeNotificationInFirebase = async (
   data = {}
 ) => {
   try {
+    console.log("🟢 WEB APP: storeNotificationInFirebase called with:", {
+      title,
+      body: body.substring(0, 30) + (body.length > 30 ? "..." : ""),
+      senderId,
+      receiverId,
+      dataKeys: Object.keys(data),
+    });
+
     // Validate inputs
     if (!senderId || !receiverId) {
-      console.error("Missing senderId or receiverId");
+      console.error("❌ WEB APP: Missing senderId or receiverId");
       return null;
     }
 
-    // Ensure IDs are strings
-    senderId = senderId.toString();
-    receiverId = receiverId.toString();
+    // Ensure IDs are strings - VERY IMPORTANT
+    senderId = String(senderId);
+    receiverId = String(receiverId);
 
+    console.log(
+      `🟢 WEB APP: Using senderId: ${senderId}, receiverId: ${receiverId}`
+    );
+
+    // Create notification data object - EXACTLY like mobile
     const notificationData = {
       title,
       body,
@@ -223,31 +202,48 @@ export const storeNotificationInFirebase = async (
       receiverId,
       data,
       read: false,
-      createdAt: serverTimestamp(),
+      createdAt: new Date(), // Use regular Date instead of serverTimestamp for reliability
     };
 
-    console.log("Storing notification:", notificationData);
+    console.log("🟢 WEB APP: About to store notification data:", {
+      title: notificationData.title,
+      body:
+        notificationData.body.substring(0, 30) +
+        (notificationData.body.length > 30 ? "..." : ""),
+      senderId: notificationData.senderId,
+      receiverId: notificationData.receiverId,
+    });
 
-    // Add to Firestore
+    // Access Firestore collection - THE EXACT SAME AS MOBILE
     const docRef = await addDoc(
       collection(FIREBASE_DB, "notifications"),
       notificationData
     );
-    console.log("Notification stored in Firebase with ID:", docRef.id);
+
+    console.log(
+      "✅ WEB APP: Notification stored in Firebase with ID:",
+      docRef.id
+    );
     return docRef.id;
   } catch (error) {
-    console.error("Error storing notification:", error);
+    console.error("❌ WEB APP ERROR storing notification:", error);
+    console.error("Error message:", error.message);
+    console.error("Error code:", error.code);
+    try {
+      console.error("Error details:", JSON.stringify(error, null, 2));
+    } catch (e) {
+      // Ignore error serialization issues
+    }
     return null;
   }
 };
 
-// Mark notification as read
-
+// Mark notification as read - EXACTLY like mobile version
 export const markNotificationAsRead = async (notificationId) => {
   try {
     console.log("Marking notification as read:", notificationId);
 
-    // Use the local getUserId function instead of imported one
+    // Use the getUserId function
     const userId = getUserId();
     if (!userId) {
       console.error("No user ID available to mark notification as read");
@@ -259,11 +255,9 @@ export const markNotificationAsRead = async (notificationId) => {
     // Get the notification document
     const notificationRef = doc(FIREBASE_DB, "notifications", notificationId);
 
-    // Simply update the read status - only updating 'read' field to match security rules
-    // Your rules only allow updating the 'read' field specifically
+    // Simply update the read status
     await updateDoc(notificationRef, {
       read: true,
-      // Removed readAt since your rules don't include it
     });
 
     console.log("Notification marked as read successfully");
@@ -273,53 +267,44 @@ export const markNotificationAsRead = async (notificationId) => {
     return false;
   }
 };
-// Comprehensive function to get the current user ID from multiple sources
-function getUserId(passedUserId = null) {
+
+// User ID function - SIMPLIFIED to match mobile version
+export const getUserId = (passedUserId = null) => {
   try {
     // If a userId is explicitly passed, use it first
     if (passedUserId !== null && passedUserId !== undefined) {
       return passedUserId.toString();
     }
 
-    // Rest of existing function remains the same...
-    const userData = JSON.parse(localStorage.getItem("user") || "{}");
-
-    // These are all the different ways user ID might be stored
-    const possibleIds = [
-      userData.userId,
-      userData.user_id,
-      userData.id,
-      userData.uid,
-      FIREBASE_AUTH.currentUser?.uid,
-    ];
-
-    // Get first non-null value
-    let userId = possibleIds.find((id) => id !== null && id !== undefined);
-
-    // If we found an ID, convert to string and return
-    if (userId) {
-      console.log("Found user ID:", userId);
-      return userId.toString();
+    // For web, try to get from Firebase Auth first - JUST LIKE MOBILE
+    const firebaseUser = FIREBASE_AUTH.currentUser;
+    if (firebaseUser && firebaseUser.uid) {
+      return firebaseUser.uid.toString();
     }
 
-    // If all else fails, log warning and return null
+    // Web fallback - check localStorage
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    if (userData.userId || userData.id || userData.uid) {
+      return (userData.userId || userData.id || userData.uid).toString();
+    }
+
     console.warn("Could not find user ID");
     return null;
   } catch (error) {
     console.error("Error getting user ID:", error);
     return null;
   }
-}
+};
 
-// Function to listen for user's notifications (as receiver)
+// Function to listen for user's notifications - EXACTLY like mobile
 export const listenForUserNotifications = (callback, passedUserId = null) => {
   try {
     // Get the current user ID, passing along any provided userId
-    const userId = passedUserId || getUserId();
+    const userId = passedUserId || FIREBASE_AUTH.currentUser?.uid;
     console.log(
       "Setting up notification listener for user ID:",
       userId,
-      passedUserId ? "(from passed parameter)" : "(from local storage/auth)"
+      passedUserId ? "(from passed parameter)" : "(from Firebase Auth)"
     );
 
     if (!userId) {
@@ -328,7 +313,7 @@ export const listenForUserNotifications = (callback, passedUserId = null) => {
       return () => {};
     }
 
-    // IMPORTANT: Convert userId to string to match "29" in Firebase
+    // IMPORTANT: Convert userId to string to match format in Firebase
     const userIdString = userId.toString();
     console.log("Using userId as string:", userIdString);
 
@@ -360,7 +345,12 @@ export const listenForUserNotifications = (callback, passedUserId = null) => {
           notifications.push({
             id: doc.id,
             ...data,
-            createdAt: data.createdAt?.toDate?.() || new Date(),
+            createdAt:
+              data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : data.createdAt
+                ? new Date(data.createdAt)
+                : new Date(),
           });
         });
 
@@ -371,15 +361,6 @@ export const listenForUserNotifications = (callback, passedUserId = null) => {
       },
       (error) => {
         console.error("Error fetching notifications:", error);
-        // If we get an index error, suggest creating the index
-        if (
-          error.code === "failed-precondition" ||
-          error.message.includes("index")
-        ) {
-          console.error(
-            "This query requires an index. Please create it in the Firebase console."
-          );
-        }
         callback([]);
       }
     );
@@ -392,11 +373,11 @@ export const listenForUserNotifications = (callback, passedUserId = null) => {
   }
 };
 
-// Direct fetch function to test notifications - bypassing the listener
-export const directFetchNotifications = async (userId) => {
+// Direct fetch function when listener fails - EXACTLY like mobile
+export const directFetchNotifications = async (userId = null) => {
   try {
     if (!userId) {
-      userId = getUserId();
+      userId = FIREBASE_AUTH.currentUser?.uid;
     }
 
     if (!userId) {
@@ -421,7 +402,12 @@ export const directFetchNotifications = async (userId) => {
       notifications.push({
         id: doc.id,
         ...data,
-        createdAt: data.createdAt?.toDate?.() || new Date(),
+        createdAt:
+          data.createdAt instanceof Timestamp
+            ? data.createdAt.toDate()
+            : data.createdAt
+            ? new Date(data.createdAt)
+            : new Date(),
       });
     });
 
@@ -435,70 +421,11 @@ export const directFetchNotifications = async (userId) => {
   }
 };
 
-// Get notifications between two specific users
-export const getNotificationsBetweenUsers = (
-  senderId,
-  receiverId,
-  callback
-) => {
-  try {
-    if (!senderId || !receiverId) {
-      console.error("Missing senderId or receiverId");
-      callback([]);
-      return () => {};
-    }
-
-    // Convert to strings
-    senderId = senderId.toString();
-    receiverId = receiverId.toString();
-
-    // Query for notifications between these users
-    const notificationsQuery = query(
-      collection(FIREBASE_DB, "notifications"),
-      where("senderId", "==", senderId),
-      where("receiverId", "==", receiverId),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      notificationsQuery,
-      (snapshot) => {
-        const notifications = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          const createdAt =
-            data.createdAt instanceof Timestamp
-              ? data.createdAt.toDate()
-              : new Date(data.createdAt);
-
-          notifications.push({
-            id: doc.id,
-            ...data,
-            createdAt,
-          });
-        });
-
-        callback(notifications);
-      },
-      (error) => {
-        console.error("Error getting notifications between users:", error);
-        callback([]);
-      }
-    );
-
-    return typeof unsubscribe === "function" ? unsubscribe : () => {};
-  } catch (error) {
-    console.error("Error setting up notifications between users:", error);
-    callback([]);
-    return () => {};
-  }
-};
-
-// Get count of unread notifications
+// Get count of unread notifications - EXACTLY like mobile
 export const getUnreadNotificationCount = (callback) => {
   try {
     // Get current user ID
-    const userId = getUserId();
+    const userId = FIREBASE_AUTH.currentUser?.uid;
     if (!userId) {
       console.log("No user ID available, can't get unread count");
       callback(0);
@@ -532,10 +459,10 @@ export const getUnreadNotificationCount = (callback) => {
   }
 };
 
-// Mark all notifications as read
+// Mark all notifications as read - EXACTLY like mobile
 export const markAllNotificationsAsRead = async () => {
   try {
-    const userId = getUserId();
+    const userId = FIREBASE_AUTH.currentUser?.uid;
     if (!userId) {
       console.error("No user ID available");
       return false;
@@ -562,7 +489,6 @@ export const markAllNotificationsAsRead = async () => {
       promises.push(
         updateDoc(notificationRef, {
           read: true,
-          readAt: serverTimestamp(),
         })
       );
     });
@@ -576,9 +502,10 @@ export const markAllNotificationsAsRead = async () => {
   }
 };
 
-// Initialize notification system
+// Initialize notification system - modified for web
 export const initializeNotifications = async () => {
   try {
+    // For web, request permission
     const hasPermission = await requestNotificationPermission();
 
     if (hasPermission) {
