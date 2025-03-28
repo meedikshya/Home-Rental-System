@@ -23,7 +23,7 @@ const Agreement = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const insets = useSafeAreaInsets(); // Get the safe area insets
   const {
     propertyId,
     landlordId,

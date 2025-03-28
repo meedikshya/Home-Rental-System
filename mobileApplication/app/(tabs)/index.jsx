@@ -1,4 +1,3 @@
-// filepath: d:\Development\Node-React\FypAuth\mobileApplication\app\(tabs)\index.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import {
   Text,
@@ -21,7 +20,7 @@ import ApiHandler from "../../api/ApiHandler";
 import ProtectedRoute from "../(auth)/protectedRoute";
 import { getUserDataFromFirebase } from "../../context/AuthContext";
 import ImageSlider from "../../components/ui/ImageSlider";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const Home = () => {
   const [properties, setProperties] = useState([]);
@@ -30,6 +29,9 @@ const Home = () => {
   const [error, setError] = useState(null);
   const [favorites, setFavorites] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [filteredProperties, setFilteredProperties] = useState([]);
+  const [activeFilters, setActiveFilters] = useState(null);
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -216,6 +218,64 @@ const Home = () => {
     }
   };
 
+  useEffect(() => {
+    // When properties change or filters change, apply filtering
+    if (activeFilters) {
+      applyFilters(activeFilters);
+    } else {
+      setFilteredProperties(properties);
+    }
+  }, [properties, activeFilters]);
+
+  // Add this function to handle filter application
+  const applyFilters = (filters) => {
+    console.log("Index received filters:", filters);
+    setActiveFilters(filters);
+
+    if (!filters) {
+      // Reset filters
+      setFilteredProperties(properties);
+      return;
+    }
+
+    // Apply filters
+    let filtered = [...properties];
+
+    // Filter by city
+    if (filters.city) {
+      filtered = filtered.filter((property) => property.city === filters.city);
+    }
+
+    // Filter by property type
+    if (filters.roomType) {
+      filtered = filtered.filter(
+        (property) => property.roomType === filters.roomType
+      );
+    }
+
+    // Filter by availability status
+    if (filters.status) {
+      filtered = filtered.filter(
+        (property) => property.status === filters.status
+      );
+    }
+
+    // Filter by price range
+    if (filters.minPrice) {
+      filtered = filtered.filter(
+        (property) => parseInt(property.price) >= filters.minPrice
+      );
+    }
+
+    if (filters.maxPrice) {
+      filtered = filtered.filter(
+        (property) => parseInt(property.price) <= filters.maxPrice
+      );
+    }
+
+    setFilteredProperties(filtered);
+  };
+
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-100">
@@ -264,37 +324,72 @@ const Home = () => {
   };
 
   return (
-    <SafeAreaView className="bg-white flex-1">
-      <View
-        style={{
-          // paddingTop: insets.top,
-          paddingBottom: insets.bottom,
-          flex: 1,
-        }}
-      >
-        <View className="flex-row items-center py-4 px-3 border-b border-gray-200 bg-white">
-          <Text className="text-lg font-semibold text-gray-800 ml-3">
-            Properties
-          </Text>
-        </View>
+    <View style={styles.container}>
+      {/* Modern Clean Header */}
+      <View style={styles.headerContainer}>
+        <View style={[styles.headerContent, { paddingTop: insets.top + 10 }]}>
+          <View style={styles.headerTitleContainer}>
+            <Ionicons name="home" size={24} color="white" />
+            <Text style={styles.headerTitle}>Properties</Text>
+          </View>
 
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ paddingBottom: 30 }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        >
-          {/* Search Bar */}
-          <View className="mb-4 p-3 mx-4">
-            <View className="bg-white rounded-full shadow-md">
-              <Search />
-            </View>
+          {/* Add some action buttons to balance the header */}
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.headerIconButton}>
+              <Ionicons name="bookmark-outline" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Search Container */}
+      <View style={styles.searchContainer}>
+        <Search onFilterApplied={applyFilters} activeFilters={activeFilters} />
+      </View>
+
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* No Properties Message */}
+        {filteredProperties.length === 0 && (
+          <View className="px-5 pt-1 flex items-center justify-center py-10 bg-gray-50 rounded-xl mx-5 mb-4">
+            <Ionicons name="search-outline" size={50} color="#CCCCCC" />
+            <Text className="text-lg font-semibold text-gray-600 mt-4 text-center">
+              No properties found
+            </Text>
+            <Text className="text-sm text-gray-500 mt-2 text-center px-5">
+              {activeFilters
+                ? "No properties match your search criteria. Try adjusting your filters."
+                : "There are no properties available at the moment."}
+            </Text>
+            {activeFilters && (
+              <TouchableOpacity
+                className="mt-5 bg-[#20319D] py-2 px-6 rounded-full"
+                onPress={() => applyFilters(null)}
+              >
+                <Text className="text-white font-medium">Reset Filters</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Property Cards Section */}
+        <View style={styles.propertiesSection}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="grid-outline" size={20} color="#20319D" />
+            <Text style={styles.sectionTitle}>
+              All Properties
+              {activeFilters ? " (Filtered)" : ""}
+            </Text>
           </View>
 
           {/* Property List */}
-          <View className="px-5 pt-1">
-            {properties.map((item) => {
+          <View className="pt-1">
+            {filteredProperties.map((item) => {
               // Handle image press (moved inside the map function)
               const handleImagePress = (imageUri) => {
                 // Navigate to the details page with the selected image
@@ -338,7 +433,7 @@ const Home = () => {
                     />
                     <TouchableOpacity
                       className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-md"
-                      style={{ backgroundColor: "rgba(255,255,255,0.8)" }} // Add a semi-transparent white background
+                      style={{ backgroundColor: "rgba(255,255,255,0.8)" }}
                       onPress={() => handleFavoritePress(item.propertyId)}
                     >
                       <Ionicons
@@ -418,11 +513,96 @@ const Home = () => {
               );
             })}
           </View>
-        </ScrollView>
-      </View>
-    </SafeAreaView>
+        </View>
+      </ScrollView>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+  },
+
+  headerContainer: {
+    backgroundColor: "#20319D",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+    elevation: 8,
+    paddingBottom: 30,
+  },
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "white",
+    marginLeft: 10,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerIconButton: {
+    padding: 8,
+    marginLeft: 8,
+    // backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderRadius: 8,
+  },
+  searchContainer: {
+    marginHorizontal: 16,
+    marginTop: -16,
+    marginBottom: -24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 4,
+    zIndex: 10,
+  },
+  content: {
+    flex: 1,
+    paddingTop: 30,
+  },
+  contentContainer: {
+    paddingBottom: 30,
+  },
+  propertiesSection: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 8,
+  },
+});
 
 const HomeWithProtectedRoute = () => (
   <ProtectedRoute>
