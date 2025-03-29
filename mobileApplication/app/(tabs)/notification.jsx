@@ -6,8 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
+  StyleSheet,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   listenForUserNotifications,
@@ -16,6 +17,7 @@ import {
 } from "../../firebaseNotification.js";
 import { getAuth } from "firebase/auth";
 import { useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 
 const NotificationScreen = () => {
   const [notifications, setNotifications] = useState([]);
@@ -23,6 +25,7 @@ const NotificationScreen = () => {
   const [errorMessage, setErrorMessage] = useState(null);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
 
   const unreadCount = useMemo(() => {
     return notifications.filter((notification) => !notification.read).length;
@@ -32,8 +35,8 @@ const NotificationScreen = () => {
     if (!notification.data || !notification.data.action) {
       return {
         icon: "bell",
-        color: "#6B7280",
-        bgColor: "#F3F4F6",
+        color: "#6B7280", // Grey
+        bgColor: "#F3F4F6", // Light Grey
         text: "Notification",
       };
     }
@@ -42,43 +45,43 @@ const NotificationScreen = () => {
       case "view_agreement":
         return {
           icon: "file-text",
-          color: "#10B981",
-          bgColor: "#D1FAE5",
+          color: "#3B82F6", // Blue
+          bgColor: "#DBEAFE", // Light Blue
           text: "Agreement",
         };
       case "booking_request":
         return {
           icon: "calendar",
-          color: "#3B82F6",
-          bgColor: "#DBEAFE",
+          color: "#3B82F6", // Blue
+          bgColor: "#DBEAFE", // Light Blue
           text: "Booking",
         };
       case "property_update":
         return {
           icon: "home",
-          color: "#8B5CF6",
-          bgColor: "#EDE9FE",
+          color: "#3B82F6", // Blue
+          bgColor: "#DBEAFE", // Light Blue
           text: "Property",
         };
       case "payment_received":
         return {
           icon: "dollar-sign",
-          color: "#F59E0B",
-          bgColor: "#FEF3C7",
+          color: "#3B82F6", // Blue
+          bgColor: "#DBEAFE", // Light Blue
           text: "Payment",
         };
       case "view_chat":
         return {
           icon: "message-circle",
-          color: "#14B8A6",
-          bgColor: "#CCFBF1",
+          color: "#3B82F6", // Blue
+          bgColor: "#DBEAFE", // Light Blue
           text: "Message",
         };
       default:
         return {
           icon: "bell",
-          color: "#6B7280",
-          bgColor: "#F3F4F6",
+          color: "#6B7280", // Grey
+          bgColor: "#F3F4F6", // Light Grey
           text: notification.data.action || "Notification",
         };
     }
@@ -204,51 +207,54 @@ const NotificationScreen = () => {
 
     return (
       <TouchableOpacity
-        className={`flex-row border rounded-lg overflow-hidden mb-2 ${
-          notification.read
-            ? "bg-white border-gray-100"
-            : "bg-blue-50 border-blue-100"
-        }`}
+        className="mt-5"
+        style={styles.notificationItem}
         onPress={() => handleNotificationPress(notification)}
       >
-        <View style={{ backgroundColor: color }} className="w-1 h-full" />
+        <View
+          style={[styles.notificationIndicator, { backgroundColor: color }]}
+        />
 
-        <View className="flex-1 p-3">
-          <View className="flex-row justify-between mb-1">
-            <View className="flex-1 flex-row items-center">
-              <Feather name={icon} size={14} color={color} className="mr-1.5" />
-              <Text
-                className="text-sm font-semibold text-gray-800 flex-1"
-                numberOfLines={1}
+        <View style={styles.notificationContent}>
+          <View style={styles.notificationHeader}>
+            <View style={styles.notificationInfo}>
+              <View
+                style={[
+                  styles.notificationIconContainer,
+                  { backgroundColor: bgColor },
+                ]}
               >
+                <Feather name={icon} size={16} color={color} />
+              </View>
+              <Text style={styles.notificationTitle} numberOfLines={1}>
                 {notification.title}
               </Text>
             </View>
 
-            <View className="flex-row items-center">
-              {!notification.read && (
-                <View className="w-2 h-2 rounded-full bg-blue-500 mr-1.5" />
-              )}
-              <View className="flex-row items-center">
-                <Feather name="clock" size={10} color="#9CA3AF" />
-                <Text className="text-xs text-gray-400 ml-1">
+            <View style={styles.notificationMeta}>
+              {!notification.read && <View style={styles.unreadIndicator} />}
+              <View style={styles.timeAgoContainer}>
+                <Feather name="clock" size={11} color="#9CA3AF" />
+                <Text style={styles.timeAgoText}>
                   {formatTimeAgo(notification.createdAt)}
                 </Text>
               </View>
             </View>
           </View>
 
-          <Text className="text-xs text-gray-600 ml-5 mb-1" numberOfLines={2}>
+          <Text style={styles.notificationBody} numberOfLines={2}>
             {notification.body}
           </Text>
 
           {notification.data && notification.data.action && (
-            <View className="ml-5">
+            <View>
               <View
-                style={{ backgroundColor: bgColor }}
-                className="self-start px-2 py-0.5 rounded"
+                style={[
+                  styles.notificationAction,
+                  { backgroundColor: bgColor },
+                ]}
               >
-                <Text style={{ color }} className="text-xs font-medium">
+                <Text style={[styles.notificationActionText, { color }]}>
                   {text}
                 </Text>
               </View>
@@ -260,58 +266,247 @@ const NotificationScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-white px-4" style={{ paddingTop: insets.top }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
-      <Text className="text-2xl font-bold text-center mb-6 mt-2 text-[#20319D]">
-        Notifications
-      </Text>
-
-      {unreadCount > 0 && (
-        <View className="flex-row items-center bg-blue-50 rounded-lg p-3 mb-3">
-          <Feather name="bell" size={12} color="#2563EB" />
-          <Text className="text-sm font-medium text-blue-600 ml-2">
-            You have {unreadCount} unread notification
-            {unreadCount !== 1 ? "s" : ""}
-          </Text>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.headerContainer}>
+        <View style={[styles.headerContent, { paddingTop: insets.top }]}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Notifications</Text>
+          <View style={styles.headerRight} />
         </View>
-      )}
+      </View>
 
-      {errorMessage && (
-        <View className="bg-red-100 rounded-lg p-3 mb-3">
-          <Text className="text-sm text-red-600">{errorMessage}</Text>
-        </View>
-      )}
+      <View style={styles.content}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {loading ? (
-        <View className="flex-1 justify-center items-center p-6">
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text className="mt-3 text-sm text-gray-500">Loading...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={notifications}
-          renderItem={renderNotificationItem}
-          keyExtractor={(item) => item.id}
-          className="flex-grow"
-          contentContainerStyle={{ paddingBottom: 16 }}
-          ListEmptyComponent={() => (
-            <View className="flex-1 justify-center items-center p-6">
-              <Feather name="bell" size={32} color="#D1D5DB" />
-              <Text className="text-sm text-gray-500 mt-3">
-                No notifications yet
-              </Text>
-              <Text className="text-xs text-gray-400 text-center mt-1">
-                You'll see notifications here when they arrive
-              </Text>
-            </View>
-          )}
-          showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View className="h-2" />}
-        />
-      )}
+        {unreadCount > 0 && (
+          <View style={styles.unreadBanner}>
+            <Feather name="bell" size={16} color="#2563EB" />
+            <Text style={styles.unreadText}>
+              You have {unreadCount} unread notification
+              {unreadCount !== 1 ? "s" : ""}
+            </Text>
+          </View>
+        )}
+
+        {errorMessage && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        )}
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={notifications}
+            renderItem={renderNotificationItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <Feather name="bell" size={40} color="#D1D5DB" />
+                <Text style={styles.emptyText}>No notifications yet</Text>
+                <Text style={styles.emptySubtext}>
+                  You'll see notifications here when they arrive
+                </Text>
+              </View>
+            )}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+          />
+        )}
+      </View>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+  },
+  // Header Styles
+  headerContainer: {
+    backgroundColor: "#20319D",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 15,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "white",
+  },
+  headerRight: {
+    width: 40,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  unreadBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  unreadText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#2563EB",
+    marginLeft: 8,
+  },
+  errorBanner: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#DC2626",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  listContent: {
+    paddingBottom: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  emptySubtext: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+  itemSeparator: {
+    height: 12,
+  },
+  notificationItem: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  notificationIndicator: {
+    width: 4,
+    height: "100%",
+  },
+  notificationContent: {
+    flex: 1,
+    padding: 12,
+  },
+  notificationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  notificationInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  notificationIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  notificationMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  unreadIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#3B82F6",
+    marginRight: 8,
+  },
+  timeAgoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  timeAgoText: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginLeft: 4,
+  },
+  notificationBody: {
+    fontSize: 14,
+    color: "#4B5563",
+    marginBottom: 12,
+  },
+  notificationAction: {
+    backgroundColor: "#EFF6FF", // Light Blue
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignSelf: "flex-start",
+  },
+  notificationActionText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#3B82F6",
+  },
+});
 
 export default NotificationScreen;
