@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -18,12 +19,14 @@ import Checkbox from "expo-checkbox";
 import ApiHandler from "../../api/ApiHandler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { sendNotificationToUser } from "../../firebaseNotification.js";
+import { downloadAgreement } from "../../components/ui/downloadAgreement.jsx";
+import AgreementHeader from "../../components/ui/AgreementHeader.jsx";
 
 const Agreement = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // Get the safe area insets
+  const insets = useSafeAreaInsets();
   const {
     propertyId,
     landlordId,
@@ -52,6 +55,21 @@ const Agreement = () => {
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadAgreement = async () => {
+    const agreementData = {
+      address,
+      startDate: startDate ? startDate.toISOString() : null,
+      endDate: endDate ? endDate.toISOString() : null,
+      landlordName,
+      renterName,
+      price,
+      agreementId: agreementId || "Draft",
+    };
+
+    await downloadAgreement(agreementData, setIsDownloading);
+  };
 
   // Fetch renter name
   const fetchRenterName = async () => {
@@ -117,7 +135,7 @@ const Agreement = () => {
       }
       return false;
     } finally {
-      setLoading(false);
+      setLoading(false); // Ensure loading is set to false, even if there's an error
     }
   };
 
@@ -151,41 +169,27 @@ const Agreement = () => {
     }
   };
 
-  // Load initial data
-  useEffect(() => {
-    const loadInitialData = async () => {
+  // Refresh all data
+  const refreshAllData = useCallback(async () => {
+    setRefreshing(true);
+    try {
       if (renterId) {
         await fetchRenterName();
       }
       if (bookingId) {
         await fetchAgreementDetails();
+      } else {
+        setLoading(false); // Make sure loading is set to false if there's no bookingId
       }
-    };
-
-    loadInitialData();
-  }, [renterId, bookingId]);
-
-  // Refresh all data
-  const refreshAllData = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetchRenterName();
-      await fetchAgreementDetails();
     } catch (error) {
       console.error("Error refreshing data:", error);
+      setLoading(false); // Set loading to false on error
     } finally {
       setRefreshing(false);
     }
   }, [renterId, bookingId]);
 
-  // Auto-refresh on focus
-  useFocusEffect(
-    useCallback(() => {
-      console.log("Agreement page focused, refreshing data...");
-      refreshAllData();
-    }, [refreshAllData])
-  );
-
+  // Handle datetime selection
   const handleConfirmStart = (date) => {
     setStartDate(date);
     setEndDate(null);
@@ -209,6 +213,36 @@ const Agreement = () => {
     setEndPickerVisible(false);
   };
 
+  // Load initial data
+  useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        if (renterId) {
+          await fetchRenterName();
+        }
+        if (bookingId) {
+          await fetchAgreementDetails();
+        } else {
+          setLoading(false); // Make sure loading is set to false if there's no bookingId
+        }
+      } catch (error) {
+        console.error("Error loading initial data:", error);
+        setLoading(false); // Make sure loading is set to false on error
+      }
+    };
+
+    loadInitialData();
+  }, [renterId, bookingId]);
+
+  // Auto-refresh on focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log("Agreement page focused, refreshing data...");
+      refreshAllData();
+    }, [refreshAllData])
+  );
+
+  // Handle proceed booking
   const handleProceedBooking = async () => {
     if (!isAgreed) {
       Alert.alert("Error", "You must agree to the lease agreement to proceed.");
@@ -273,6 +307,7 @@ const Agreement = () => {
     }
   };
 
+  // Handle proceed to payment
   const handleProceedPayment = () => {
     router.push({
       pathname: "payment-page",
@@ -282,7 +317,7 @@ const Agreement = () => {
         bookingId,
         renterId,
         agreementId,
-        price, // Use actual price instead of temPrice
+        price,
         address,
         startDate: startDate ? startDate.toISOString().split("T")[0] : null,
         endDate: endDate ? endDate.toISOString().split("T")[0] : null,
@@ -314,15 +349,8 @@ const Agreement = () => {
   }
 
   return (
-    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center py-4 px-3 border-b border-gray-200 bg-white">
-        <TouchableOpacity onPress={() => navigation.goBack()} className="p-1">
-          <Ionicons name="arrow-back" size={24} color="#20319D" />
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-800 ml-3">
-          Agreement
-        </Text>
-      </View>
+    <View className="flex-1 bg-white">
+      <AgreementHeader navigation={navigation} title="Agreement" />
 
       <ScrollView
         contentContainerStyle={{ padding: 16 }}
@@ -368,7 +396,6 @@ const Agreement = () => {
 
         {agreementExists ? (
           <>
-            {/* Status badges */}
             <View className="flex-row flex-wrap gap-2 mt-4">
               <View
                 className={`py-1 px-3 rounded-full ${
@@ -403,16 +430,13 @@ const Agreement = () => {
               )}
             </View>
 
-            {/* Styled Agreement Document */}
             <View className="mt-4 bg-white border border-gray-300 rounded-lg overflow-hidden shadow-lg">
-              {/* Agreement Header */}
               <View className="bg-gray-50 p-4 border-b border-gray-200">
                 <Text className="text-xl font-bold text-center text-gray-800">
                   LEASE AGREEMENT
                 </Text>
               </View>
 
-              {/* Agreement Body */}
               <View className="p-6 bg-white">
                 <Text className="text-base leading-relaxed text-gray-700">
                   This agreement is made between the landlord and tenant for the
@@ -457,7 +481,6 @@ const Agreement = () => {
                   </View>
                 </View>
 
-                {/* Agreement Terms */}
                 <View className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
                   <Text className="font-semibold mb-2">Agreement Terms:</Text>
                   <View className="ml-2">
@@ -491,14 +514,9 @@ const Agreement = () => {
                 </View>
               </View>
 
-              {/* Agreement Footer */}
               <View className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex-row justify-between">
-                <View>
-                  <Text className="text-xs text-gray-500">Document ID:</Text>
-                  <Text className="text-sm font-medium">{agreementId}</Text>
-                </View>
-                <View>
-                  <Text className="text-xs text-gray-500">Date Signed:</Text>
+                <View className="flex-row items-center justify-center ml-20">
+                  <Text className="text-xs text-gray-500 ">Date Signed:</Text>
                   <Text className="text-sm font-medium">
                     {new Date().toLocaleDateString()}
                   </Text>
@@ -506,7 +524,28 @@ const Agreement = () => {
               </View>
             </View>
 
-            {/* Action Button */}
+            <TouchableOpacity
+              className="mt-4 p-3 flex-row justify-center items-center bg-gray-100 rounded-lg border border-gray-300"
+              onPress={handleDownloadAgreement}
+            >
+              {isDownloading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#20319D"
+                  className="mr-2"
+                />
+              ) : (
+                <Ionicons
+                  name="download-outline"
+                  size={20}
+                  color="#20319D"
+                  className="mr-2"
+                />
+              )}
+              <Text className="text-[#20319D] font-medium ml-2">
+                {isDownloading ? "Preparing..." : "Download Agreement"}
+              </Text>
+            </TouchableOpacity>
             <View className="mt-6 mb-8 w-full">
               {isPending ? (
                 <TouchableOpacity
@@ -548,8 +587,6 @@ const Agreement = () => {
           </>
         ) : (
           <>
-            {/* Your existing code for new agreement creation */}
-            {/* ... */}
             <View className="mt-6 bg-white p-4 rounded-lg shadow-lg">
               <Text className="text-gray-600 text-base mb-2">
                 Note: Lease period must be at least 3 months.
@@ -600,9 +637,7 @@ const Agreement = () => {
               />
             </View>
 
-            {/* New Agreement Paper */}
             <View className="mt-6 bg-white border border-gray-300 rounded-lg overflow-hidden shadow-lg">
-              {/* Agreement Header */}
               <View className="bg-gray-50 p-4 border-b border-gray-200">
                 <Text className="text-xl font-bold text-center text-gray-800">
                   LEASE AGREEMENT
@@ -653,7 +688,6 @@ const Agreement = () => {
                   </View>
                 </View>
 
-                {/* Agreement Terms */}
                 <View className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
                   <Text className="font-semibold mb-2">Agreement Terms:</Text>
                   <View className="ml-2">
@@ -688,6 +722,32 @@ const Agreement = () => {
               </View>
             </View>
 
+            {startDate && endDate && (
+              <TouchableOpacity
+                className="mt-4 p-3 flex-row justify-center items-center bg-gray-100 rounded-lg border border-gray-300"
+                onPress={handleDownloadAgreement}
+                disabled={isDownloading}
+              >
+                {isDownloading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color="#20319D"
+                    className="mr-2"
+                  />
+                ) : (
+                  <Ionicons
+                    name="download-outline"
+                    size={20}
+                    color="#20319D"
+                    className="mr-2"
+                  />
+                )}
+                <Text className="text-[#20319D] font-medium ml-2">
+                  {isDownloading ? "Preparing..." : "Download Draft Agreement"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <View className="mt-6 bg-white p-4 rounded-lg shadow-lg flex-row items-center">
               <Checkbox
                 value={isAgreed}
@@ -705,7 +765,7 @@ const Agreement = () => {
                   isPending ? "bg-gray-400" : "bg-[#20319D]"
                 }`}
                 onPress={handleProceedBooking}
-                disabled={isPending}
+                disabled={isPending || !isAgreed || !startDate || !endDate}
               >
                 <Text className="text-white text-lg font-semibold text-center">
                   {isPending ? "Pending Request" : "Proceed Booking"}

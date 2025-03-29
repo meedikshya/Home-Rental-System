@@ -9,15 +9,19 @@ import {
   Modal,
   Image,
   StyleSheet,
+  Dimensions,
 } from "react-native";
 import { Ionicons, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import ApiHandler from "../../api/ApiHandler";
+
 import { getUserDataFromFirebase } from "../../context/AuthContext";
 import ImageSlider from "../../components/ui/ImageSlider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const { width } = Dimensions.get("window");
 
 const Details = () => {
   const navigation = useNavigation();
@@ -70,12 +74,10 @@ const Details = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [propertyStatus, setPropertyStatus] = useState(status || "Available");
   const [propertyImages, setPropertyImages] = useState(initialImages);
-  const [loading, setLoading] = useState(true); // Initially set loading to true
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
-
-  // Optimized property images fetching - use passed images from index.jsx
-  // No API call needed here to avoid 404 errors
+  const { width, height } = Dimensions.get("window");
 
   // Fetch current user ID from Firebase
   useEffect(() => {
@@ -89,7 +91,7 @@ const Details = () => {
         console.error("Error fetching user data:", error);
         Alert.alert("Error", "Unable to fetch user data.");
       } finally {
-        setLoading(false); // Set loading to false after fetching user data
+        setLoading(false);
       }
     };
 
@@ -318,26 +320,26 @@ const Details = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case "Rented":
-        return "text-red-600";
+        return "#DC2626";
       case "Available":
-        return "text-green-600";
+        return "#16A34A";
       case "Inactive":
-        return "text-gray-600";
+        return "#6B7280";
       default:
-        return "text-[#20319D]";
+        return "#20319D";
     }
   };
 
   const getStatusBgColor = (status) => {
     switch (status) {
       case "Rented":
-        return "bg-red-100 border-red-300";
+        return "#FEE2E2";
       case "Available":
-        return "bg-green-100 border-green-300";
+        return "#DCFCE7";
       case "Inactive":
-        return "bg-gray-100 border-gray-300";
+        return "#F3F4F6";
       default:
-        return "bg-blue-100 border-blue-300";
+        return "#EFF6FF";
     }
   };
 
@@ -356,119 +358,139 @@ const Details = () => {
   };
 
   return (
-    <View className="bg-white flex-1" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center py-4 px-3 border-b border-gray-200 bg-white">
-        <TouchableOpacity className="p-1" onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#20319D" />
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-800 ml-3">
-          Property Details
-        </Text>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.headerContainer}>
+        <View style={[styles.headerContent, { paddingTop: insets.top }]}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Property Details</Text>
+          <View style={styles.headerRight} />
+        </View>
       </View>
 
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 30 }}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Image slider with elegant loading state */}
-        <View className="mb-4 p-3 mx-4">
-          <Text> </Text>
-          {/* Added mx-4 for horizontal margin */}
+        {/* Image slider */}
+        <View style={styles.imageSliderContainer}>
           {loading ? (
-            <View className="h-[350px] bg-gray-100 rounded-xl justify-center items-center">
+            <View style={styles.loadingImageContainer}>
               <ActivityIndicator size="large" color="#20319D" />
-              <Text className="mt-2 text-gray-600">Loading images...</Text>
+              <Text style={styles.loadingText}>Loading images...</Text>
             </View>
           ) : (
             <ImageSlider
               key={`slider-${propertyImages.length}`}
               images={propertyImages}
-              imageHeight={350}
+              imageHeight={320}
               onImagePress={handleImagePress}
+              cardWidth={width - 24}
             />
           )}
         </View>
 
-        <View className="px-5 pt-1">
+        <View style={styles.contentContainer}>
           {/* Property title and status */}
-          <View className="flex-row justify-between items-center mb-2">
-            <Text className="text-2xl font-bold text-gray-800 flex-1 pr-2">
-              {title}
-            </Text>
+          <View style={styles.titleContainer}>
+            <Text style={styles.propertyTitle}>{title}</Text>
             <View
-              className={`py-1 px-2 rounded-full border text-sm font-semibold ${getStatusBgColor(
-                propertyStatus
-              )}`}
+              style={[
+                styles.statusBadge,
+                { backgroundColor: getStatusBgColor(propertyStatus) },
+              ]}
             >
-              <Text className="text-gray-800">{propertyStatus}</Text>
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: getStatusColor(propertyStatus) },
+                ]}
+              >
+                {propertyStatus}
+              </Text>
             </View>
           </View>
 
           {/* Loading indicator when refreshing */}
           {refreshing && (
-            <View className="flex-row items-center mt-1">
+            <View style={styles.refreshingContainer}>
               <ActivityIndicator size="small" color="#20319D" />
-              <Text className="text-gray-500 ml-1">Updating...</Text>
+              <Text style={styles.refreshingText}>Updating...</Text>
             </View>
           )}
 
           {/* Location */}
-          <View className="flex-row items-center mt-2">
+          <View style={styles.infoRow}>
             <Ionicons name="location" size={18} color="#666" />
-            <Text className="text-gray-600 ml-1">
+            <Text style={styles.infoText}>
               {city}, {municipality} - {ward}
             </Text>
           </View>
 
           {/* Property type */}
-          <View className="flex-row items-center mt-1">
+          <View style={styles.infoRow}>
             <MaterialIcons name="house" size={18} color="#666" />
-            <Text className="text-gray-600 ml-1">
-              Property Type: {roomType}
-            </Text>
+            <Text style={styles.infoText}>Property Type: {roomType}</Text>
           </View>
 
           {/* Nearest landmark */}
           {nearestLandmark && (
-            <View className="flex-row items-center mt-4 bg-blue-50 p-3 rounded-md border-l-4 border-blue-400">
+            <View style={styles.landmarkContainer}>
               <Ionicons name="navigate-outline" size={22} color="#20319D" />
-              <Text className="text-gray-700 ml-2 flex-1">
+              <Text style={styles.landmarkText}>
                 Nearest Landmark: {nearestLandmark}
               </Text>
             </View>
           )}
 
           {/* Property features */}
-          <View className="flex-row flex-wrap mt-5 bg-gray-50 p-3 rounded-xl">
-            {totalBedrooms && (
-              <View className="flex-row items-center mr-4 mb-3 min-w-[40%]">
-                <Ionicons name="bed-outline" size={24} color="#20319D" />
-                <Text className="text-gray-700 ml-2">
+          <View style={styles.featuresContainer}>
+            {totalBedrooms > 0 && (
+              <View style={styles.featureItem}>
+                <View style={styles.featureIconContainer}>
+                  <Ionicons name="bed-outline" size={24} color="#20319D" />
+                </View>
+                <Text style={styles.featureText}>
                   {totalBedrooms} {totalBedrooms > 1 ? "Bedrooms" : "Bedroom"}
                 </Text>
               </View>
             )}
-            {totalWashrooms && (
-              <View className="flex-row items-center mr-4 mb-3 min-w-[40%]">
-                <Ionicons name="water-outline" size={24} color="#20319D" />
-                <Text className="text-gray-700 ml-2">
+
+            {totalWashrooms > 0 && (
+              <View style={styles.featureItem}>
+                <View style={styles.featureIconContainer}>
+                  <Ionicons name="water-outline" size={24} color="#20319D" />
+                </View>
+                <Text style={styles.featureText}>
                   {totalWashrooms}{" "}
                   {totalWashrooms > 1 ? "Bathrooms" : "Bathroom"}
                 </Text>
               </View>
             )}
-            {totalKitchens && (
-              <View className="flex-row items-center mr-4 mb-3 min-w-[40%]">
-                <MaterialIcons name="kitchen" size={24} color="#20319D" />
-                <Text className="text-gray-700 ml-2">
+
+            {totalKitchens > 0 && (
+              <View style={styles.featureItem}>
+                <View style={styles.featureIconContainer}>
+                  <MaterialIcons name="kitchen" size={24} color="#20319D" />
+                </View>
+                <Text style={styles.featureText}>
                   {totalKitchens} {totalKitchens > 1 ? "Kitchens" : "Kitchen"}
                 </Text>
               </View>
             )}
-            {totalLivingRooms && (
-              <View className="flex-row items-center mr-4 mb-3 min-w-[40%]">
-                <Ionicons name="tv-outline" size={24} color="#20319D" />
-                <Text className="text-gray-700 ml-2">
+
+            {totalLivingRooms > 0 && (
+              <View style={styles.featureItem}>
+                <View style={styles.featureIconContainer}>
+                  <Ionicons name="tv-outline" size={24} color="#20319D" />
+                </View>
+                <Text style={styles.featureText}>
                   {totalLivingRooms}{" "}
                   {totalLivingRooms > 1 ? "Living Rooms" : "Living Room"}
                 </Text>
@@ -476,81 +498,71 @@ const Details = () => {
             )}
           </View>
 
-          <View className="h-[1px] bg-gray-200 my-5" />
+          <View style={styles.divider} />
 
           {/* Description */}
-          <Text className="text-gray-700 leading-7">{description}</Text>
+          <View style={styles.descriptionContainer}>
+            <Text style={styles.sectionTitle}>Description</Text>
+            <Text style={styles.descriptionText}>{description}</Text>
+          </View>
 
-          <View className="h-[1px] bg-gray-200 my-5" />
+          <View style={styles.divider} />
 
           {/* Landlord info */}
-          <View className="flex-row justify-between items-center">
-            <View className="flex-row items-center">
-              <Ionicons
-                name="person-circle-outline"
-                size={24}
-                color="#20319D"
-              />
-              <Text className="text-gray-700 ml-2">
-                Property by: {landlordName || "Loading..."}
-              </Text>
+          <View style={styles.landlordContainer}>
+            <View style={styles.landlordInfo}>
+              <View style={styles.landlordIconContainer}>
+                <Ionicons name="person" size={24} color="white" />
+              </View>
+              <View>
+                <Text style={styles.landlordLabel}>Owner</Text>
+                <Text style={styles.landlordName}>
+                  {landlordName || "Loading..."}
+                </Text>
+              </View>
             </View>
-            <TouchableOpacity
-              className="p-2 bg-blue-50 rounded-full w-10 h-10 flex items-center justify-center"
-              onPress={handleChat}
-            >
-              <Ionicons name="chatbubble-outline" size={22} color="#20319D" />
+            <TouchableOpacity style={styles.chatButton} onPress={handleChat}>
+              <Ionicons name="chatbubble-outline" size={22} color="white" />
+              <Text style={styles.chatButtonText}>Chat</Text>
             </TouchableOpacity>
           </View>
 
           {/* Price and booking section */}
-          <View className="flex-row justify-between items-center bg-gray-50 mt-5 p-4 rounded-xl shadow-sm">
-            <View className="flex-1">
-              <Text className="text-xl font-bold text-blue-900">
-                Rs. {price}
-                <Text className="text-sm font-normal text-gray-600">
-                  {" "}
-                  / per month
-                </Text>
-              </Text>
+          <View style={styles.bookingContainer}>
+            <View style={styles.priceContainer}>
+              <Text style={styles.priceValue}>Rs. {price}</Text>
+              <Text style={styles.priceLabel}>per month</Text>
             </View>
 
             {propertyStatus !== "Rented" ? (
               isBooked ? (
                 <TouchableOpacity
-                  className="bg-gray-600 py-3 px-4 rounded-md items-center justify-center min-w-[120px]"
+                  style={styles.viewBookingButton}
                   onPress={handleViewBooking}
                 >
-                  <Text className="text-white text-base font-semibold">
-                    View Booking
-                  </Text>
+                  <Text style={styles.bookButtonText}>View Booking</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  className={`py-3 px-4 rounded-md items-center justify-center min-w-[120px] ${
-                    propertyStatus !== "Available"
-                      ? "bg-gray-400"
-                      : "bg-[#20319D]"
-                  }`}
+                  style={[
+                    styles.bookButton,
+                    propertyStatus !== "Available" && styles.disabledButton,
+                  ]}
                   onPress={handleBookNow}
                   disabled={propertyStatus !== "Available"}
                 >
-                  <Text className="text-white text-base font-semibold">
-                    Book Now
-                  </Text>
+                  <Text style={styles.bookButtonText}>Book Now</Text>
                 </TouchableOpacity>
               )
             ) : (
-              <View className="bg-red-500 py-3 px-4 rounded-md flex-row items-center justify-center min-w-[140px]">
+              <View style={styles.rentedButton}>
                 <FontAwesome5
                   name="calendar-check"
                   size={16}
                   color="white"
-                  className="mr-2"
+                  style={styles.rentedIcon}
                 />
-                <Text className="text-white text-base font-semibold">
-                  Already Rented
-                </Text>
+                <Text style={styles.rentedText}>Already Rented</Text>
               </View>
             )}
           </View>
@@ -565,38 +577,408 @@ const Details = () => {
       >
         <View style={styles.modalContainer}>
           <TouchableOpacity
-            style={styles.closeButton}
+            style={styles.modalBackdrop}
+            activeOpacity={1}
             onPress={closeImageModal}
-          >
-            <Ionicons name="close-circle" size={30} color="white" />
-          </TouchableOpacity>
-          <Image
-            style={styles.modalImage}
-            source={{ uri: selectedImage }}
-            resizeMode="contain"
           />
+          <View style={styles.modalContent}>
+            <Image
+              style={styles.modalImage}
+              source={{ uri: selectedImage }}
+              resizeMode="contain"
+            />
+            <TouchableOpacity
+              style={styles.closeModalButton}
+              onPress={closeImageModal}
+            >
+              <Ionicons name="close-circle" size={40} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </View>
   );
 };
+
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+  },
+
+  // Header Styles
+  headerContainer: {
+    backgroundColor: "#20319D",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 15,
+
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "white",
+  },
+  headerRight: {
+    width: 40,
+  },
+
+  // ScrollView Styles
+  scrollView: {
+    flex: 1,
+    marginTop: 10,
+  },
+  scrollContent: {
+    paddingBottom: 30,
+  },
+
+  // Image Slider Styles
+  imageSliderContainer: {
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    borderTopRightRadius: 30,
+    borderTopLeftRadius: 30,
+    overflow: "hidden",
+    marginTop: 15,
+    marginHorizontal: 25,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  loadingImageContainer: {
+    height: 300,
+    backgroundColor: "#E5E7EB",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#6B7280",
+  },
+
+  // Content Container Styles
+  contentContainer: {
+    padding: 20,
+    borderRadius: 10,
+    backgroundColor: "white",
+    marginTop: -5,
+    marginHorizontal: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  // Title and Status Styles
+  titleContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  propertyTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#1F2937",
+    flex: 1,
+    marginRight: 12,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  // Refreshing Indicator Styles
+  refreshingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 8,
+  },
+  refreshingText: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginLeft: 8,
+  },
+
+  // Info Row Styles
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  infoText: {
+    fontSize: 16,
+    color: "#4B5563",
+    marginLeft: 10,
+  },
+
+  // Landmark Styles
+  landmarkContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: "#3B82F6",
+  },
+  landmarkText: {
+    fontSize: 16,
+    color: "#1F2937",
+    marginLeft: 12,
+    flex: 1,
+  },
+
+  // Features Styles
+  featuresContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  featureItem: {
+    width: "48%",
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  featureIconContainer: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#EFF6FF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  featureText: {
+    fontSize: 16,
+    color: "#4B5563",
+    fontWeight: "500",
+  },
+
+  // Divider
+  divider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 20,
+  },
+
+  // Description Styles
+  descriptionContainer: {
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 12,
+  },
+  descriptionText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#4B5563",
+  },
+
+  // Landlord Styles
+  landlordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F9FAFB",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  landlordInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  landlordIconContainer: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#20319D",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  landlordLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  landlordName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  chatButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#20319D",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  chatButtonText: {
+    color: "white",
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+
+  // Booking Styles
+  bookingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  priceContainer: {
+    flex: 1,
+  },
+  priceValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#20319D",
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  bookButton: {
+    backgroundColor: "#20319D",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#20319D",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  disabledButton: {
+    backgroundColor: "#9CA3AF",
+  },
+  viewBookingButton: {
+    backgroundColor: "#4B5563",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  bookButtonText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  rentedButton: {
+    backgroundColor: "#DC2626",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rentedIcon: {
+    marginRight: 8,
+  },
+  rentedText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
+  },
   modalContainer: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.9)",
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
+    height: "100%",
+  },
+  modalContent: {
+    width: width * 0.95,
+    height: width * 1.3,
+    position: "relative",
     justifyContent: "center",
     alignItems: "center",
   },
   modalImage: {
-    width: "90%",
-    height: "90%",
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
   },
-  closeButton: {
+  closeModalButton: {
     position: "absolute",
-    top: 80,
-    right: 0,
-    zIndex: 10,
-    padding: 10,
+    top: -30,
+    right: 20,
+    zIndex: 20,
+    padding: 5,
+    borderRadius: 25,
   },
 });
 

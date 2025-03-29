@@ -7,12 +7,27 @@ import {
   Modal,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import SearchModal from "./SearchModal";
 
-const Search = ({ onFilterApplied, activeFilters }) => {
+const Search = ({ onFilterApplied, activeFilters, propertyTypes = [] }) => {
   const [modalVisible, setModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // If propertyTypes isn't provided, use these defaults
+  const defaultPropertyTypes = [
+    "Apartment",
+    "Room",
+    "House",
+    "Villa",
+    "Office",
+  ];
+
+  // Use property types from props or defaults if not provided
+  const availablePropertyTypes =
+    propertyTypes.length > 0 ? propertyTypes : defaultPropertyTypes;
 
   // Add debug logs to track activeFilters
   useEffect(() => {
@@ -48,8 +63,52 @@ const Search = ({ onFilterApplied, activeFilters }) => {
   const hasActiveFilters =
     activeFilters && Object.keys(activeFilters).length > 0;
 
+  // Handle property type filter selection
+  const handlePropertyTypeFilter = (type) => {
+    // If this type is already selected, clear it
+    if (activeFilters?.roomType === type) {
+      const newFilters = { ...activeFilters };
+      delete newFilters.roomType;
+
+      // If empty filters, set to null
+      const hasFilters = Object.keys(newFilters).length > 0;
+      onFilterApplied(hasFilters ? newFilters : null);
+    } else {
+      // Otherwise apply this filter
+      const newFilters = { ...(activeFilters || {}), roomType: type };
+      onFilterApplied(newFilters);
+    }
+  };
+
+  // Handle "All" filter selection
+  const handleAllTypesFilter = () => {
+    // If roomType is already not set, do nothing
+    if (!activeFilters?.roomType) return;
+
+    // Otherwise remove roomType filter
+    const newFilters = { ...activeFilters };
+    delete newFilters.roomType;
+
+    // If empty filters, set to null
+    const hasFilters = Object.keys(newFilters).length > 0;
+    onFilterApplied(hasFilters ? newFilters : null);
+  };
+
+  // Map property types to appropriate icons
+  const getIconForPropertyType = (type) => {
+    const typeLower = type.toLowerCase();
+    if (typeLower.includes("apartment")) return "business-outline";
+    if (typeLower.includes("room")) return "bed-outline";
+    if (typeLower.includes("house")) return "home-outline";
+    if (typeLower.includes("villa")) return "business-outline";
+    if (typeLower.includes("office")) return "briefcase-outline";
+    if (typeLower.includes("shop")) return "storefront-outline";
+    return "home-outline"; // Default
+  };
+
   return (
     <View style={styles.container}>
+      {/* Search Bar */}
       <TouchableOpacity
         style={[styles.searchBar, hasActiveFilters && styles.searchBarActive]}
         onPress={() => setModalVisible(true)}
@@ -113,7 +172,11 @@ const Search = ({ onFilterApplied, activeFilters }) => {
 
         {hasActiveFilters && (
           <View style={styles.actionsContainer}>
-            <Text style={styles.filterCountText}>{getActiveFilterCount()}</Text>
+            <View style={styles.filterCountBadge}>
+              <Text style={styles.filterCountText}>
+                {getActiveFilterCount()}
+              </Text>
+            </View>
             <TouchableOpacity
               style={styles.clearButton}
               onPress={clearFilters}
@@ -125,6 +188,91 @@ const Search = ({ onFilterApplied, activeFilters }) => {
         )}
       </TouchableOpacity>
 
+      {/* Property Type Quick Filters */}
+      <View style={styles.quickFiltersContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.quickFiltersScroll}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#20319D" />
+          ) : (
+            <>
+              {/* All Properties Filter Option */}
+              <TouchableOpacity
+                style={[
+                  styles.propertyTypeFilter,
+                  !activeFilters?.roomType && styles.propertyTypeFilterActive,
+                ]}
+                onPress={handleAllTypesFilter}
+              >
+                <View
+                  style={[
+                    styles.propertyTypeIconContainer,
+                    !activeFilters?.roomType &&
+                      styles.propertyTypeIconContainerActive,
+                  ]}
+                >
+                  <Ionicons
+                    name="grid-outline"
+                    size={22}
+                    color={!activeFilters?.roomType ? "white" : "#20319D"}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.propertyTypeLabel,
+                    !activeFilters?.roomType && styles.propertyTypeLabelActive,
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+
+              {/* Dynamic Property Type Filters */}
+              {availablePropertyTypes.map((type) => {
+                const isSelected = activeFilters?.roomType === type;
+                const iconName = getIconForPropertyType(type);
+
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.propertyTypeFilter,
+                      isSelected && styles.propertyTypeFilterActive,
+                    ]}
+                    onPress={() => handlePropertyTypeFilter(type)}
+                  >
+                    <View
+                      style={[
+                        styles.propertyTypeIconContainer,
+                        isSelected && styles.propertyTypeIconContainerActive,
+                      ]}
+                    >
+                      <Ionicons
+                        name={iconName}
+                        size={22}
+                        color={isSelected ? "white" : "#20319D"}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.propertyTypeLabel,
+                        isSelected && styles.propertyTypeLabelActive,
+                      ]}
+                    >
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Search Modal */}
       <Modal
         animationType="none"
         transparent={true}
@@ -141,8 +289,6 @@ const Search = ({ onFilterApplied, activeFilters }) => {
   );
 };
 
-// Enhanced search container styles for a more visually appealing look
-
 const styles = StyleSheet.create({
   container: {
     width: "100%",
@@ -151,7 +297,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 12,
+    borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 15,
     borderWidth: 1,
@@ -241,6 +387,60 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 2,
+  },
+
+  // Quick Filters Styles
+  quickFiltersContainer: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingLeft: 10,
+    backgroundColor: "white",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+    borderRadius: 8,
+    marginHorizontal: 0,
+  },
+  quickFiltersScroll: {
+    paddingRight: 10,
+    paddingVertical: 4,
+  },
+  propertyTypeFilter: {
+    alignItems: "center",
+    marginRight: 16,
+    width: 70,
+  },
+  propertyTypeFilterActive: {
+    opacity: 1,
+  },
+  propertyTypeIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#F0F4F8",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  propertyTypeIconContainerActive: {
+    backgroundColor: "#20319D",
+    borderColor: "#20319D",
+  },
+  propertyTypeLabel: {
+    fontSize: 12,
+    color: "#555",
+    textAlign: "center",
+  },
+  propertyTypeLabelActive: {
+    color: "#20319D",
+    fontWeight: "600",
   },
 });
 

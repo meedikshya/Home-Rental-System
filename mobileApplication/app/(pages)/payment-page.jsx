@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   Linking,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -203,135 +204,128 @@ const PaymentPage = () => {
 
   if (isCheckingPayment) {
     return (
-      <View className="flex-1 bg-white justify-center items-center">
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#20319D" />
-        <Text className="mt-4 text-gray-600">Checking payment status...</Text>
+        <Text style={styles.loadingText}>Checking payment status...</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-white" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center py-4 px-3 border-b border-gray-200 bg-white">
-        <TouchableOpacity onPress={() => navigation.goBack()} className="p-1">
-          <Ionicons name="arrow-back" size={24} color="#20319D" />
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-800 ml-3">
-          Payment
-        </Text>
+    <View style={styles.container}>
+      {/* Header - Similar to details-page.jsx */}
+      <View style={styles.headerContainer}>
+        <View style={[styles.headerContent, { paddingTop: insets.top }]}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Payment</Text>
+          <View style={styles.headerRight} />
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
         {isPaymentCompleted ? (
           // PAYMENT COMPLETED UI
-          <View className="bg-white p-6 rounded-lg shadow-lg">
+          <View style={styles.completedCard}>
             {/* Success Icon */}
-            <View className="items-center mb-6">
-              <View className="w-20 h-20 rounded-full bg-green-100 items-center justify-center">
+            <View style={styles.successIconContainer}>
+              <View style={styles.successIconCircle}>
                 <Ionicons name="checkmark-circle" size={56} color="#10b981" />
               </View>
-              <Text className="text-2xl font-bold text-green-600 mt-4">
-                Payment Complete
-              </Text>
-              <Text className="text-base text-gray-600 text-center mt-1">
+              <Text style={styles.successTitle}>Payment Complete</Text>
+              <Text style={styles.successSubtitle}>
                 Your payment has been successfully processed
               </Text>
             </View>
 
             {/* Divider */}
-            <View className="h-0.5 bg-gray-100 my-4" />
+            <View style={styles.divider} />
 
             {/* Payment Details */}
-            <View className="mt-4 space-y-3">
-              <View className="flex-row justify-between">
-                <Text className="text-gray-600">Amount Paid</Text>
-                <Text className="font-semibold">
+            <View style={styles.detailsSection}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Amount Paid</Text>
+                <Text style={styles.detailValue}>
                   Rs. {paymentData?.amount || price}
                 </Text>
               </View>
 
-              <View className="flex-row justify-between">
-                <Text className="text-gray-600">Payment Date</Text>
-                <Text className="font-semibold">
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Payment Date</Text>
+                <Text style={styles.detailValue}>
                   {formatDate(paymentData?.paymentDate)}
                 </Text>
               </View>
 
-              <View className="flex-row justify-between">
-                <Text className="text-gray-600">Payment Method</Text>
-                <Text className="font-semibold">
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Payment Method</Text>
+                <Text style={styles.detailValue}>
                   {paymentData?.paymentGateway || "eSewa"}
                 </Text>
               </View>
 
-              <View className="flex-row justify-between">
-                <Text className="text-gray-600">Status</Text>
-                <Text className="font-bold text-green-600">
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Status</Text>
+                <Text style={styles.statusValue}>
                   {paymentData?.paymentStatus || "Completed"}
                 </Text>
               </View>
             </View>
 
             {/* Agreement Details */}
-            <View className="bg-gray-50 p-4 rounded-lg mt-6">
-              <Text className="font-semibold text-lg mb-2">
-                Agreement Details
-              </Text>
-              <View className="space-y-2">
+            <View style={styles.propertyDetailsCard}>
+              <Text style={styles.sectionTitle}>Property Details</Text>
+              <View style={styles.propertyInfo}>
                 {address && (
-                  <Text className="text-gray-600">
-                    Property: <Text className="font-semibold">{address}</Text>
-                  </Text>
+                  <Text style={styles.propertyAddress}>{address}</Text>
                 )}
               </View>
             </View>
 
             {/* Return Button */}
             <TouchableOpacity
-              className="bg-[#20319D] py-4 mt-6 rounded-lg items-center"
+              style={styles.returnButton}
               onPress={() => navigation.goBack()}
             >
-              <Text className="text-white font-semibold text-base">
-                Return to Agreements
-              </Text>
+              <Text style={styles.buttonText}>Return to Agreements</Text>
             </TouchableOpacity>
           </View>
         ) : (
           // PAYMENT NOT COMPLETED UI - SHOW REGULAR PAYMENT PAGE
           <>
             {/* Payment details card */}
-            <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
-              <Text className="text-xl font-semibold mb-4">
-                Payment Details
-              </Text>
-
-              {agreementId && (
-                <Text className="text-base mb-2">
-                  Agreement ID: <Text className="font-bold">{agreementId}</Text>
-                </Text>
-              )}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Payment Details</Text>
 
               {address && (
-                <Text className="text-base mb-2">
-                  Property: <Text className="font-bold">{address}</Text>
-                </Text>
+                <View style={styles.infoRow}>
+                  <Ionicons name="location" size={20} color="#666" />
+                  <Text style={styles.infoText}>{address}</Text>
+                </View>
               )}
 
               {price && (
-                <Text className="text-base mb-2">
-                  Amount: <Text className="font-bold">Rs. {price}</Text>
-                </Text>
+                <View style={styles.amountContainer}>
+                  <Text style={styles.amountLabel}>Total Amount</Text>
+                  <Text style={styles.amountValue}>Rs. {price}</Text>
+                  <Text style={styles.amountSubtext}>per month</Text>
+                </View>
               )}
             </View>
 
             {/* Payment method section */}
-            <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
-              <Text className="text-xl font-semibold mb-4">
-                Select Payment Method
-              </Text>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Select Payment Method</Text>
 
               <TouchableOpacity
-                className="flex-row items-center p-4 border border-gray-200 rounded-lg mb-2"
+                style={styles.paymentMethodButton}
                 onPress={initiateEsewaPayment}
                 disabled={isLoading}
               >
@@ -339,11 +333,9 @@ const PaymentPage = () => {
                   source={{
                     uri: "https://esewa.com.np/common/images/esewa_logo.png",
                   }}
-                  style={{ width: 80, height: 40, resizeMode: "contain" }}
+                  style={styles.esewaLogo}
                 />
-                <Text className="ml-4 text-base font-medium flex-1">
-                  Pay with eSewa
-                </Text>
+                <Text style={styles.paymentMethodText}>Pay with eSewa</Text>
                 {isLoading ? (
                   <ActivityIndicator size="small" color="#60bb46" />
                 ) : (
@@ -353,22 +345,54 @@ const PaymentPage = () => {
             </View>
 
             {/* Payment information */}
-            <View className="bg-white p-4 rounded-lg shadow-lg mb-4">
-              <Text className="text-xl font-semibold mb-2">
-                Payment Information
-              </Text>
-              <Text className="text-sm text-gray-600 mb-2">
-                • Payment will be processed securely through eSewa
-              </Text>
-              <Text className="text-sm text-gray-600 mb-2">
-                • You'll be redirected to the official eSewa login page
-              </Text>
-              <Text className="text-sm text-gray-600 mb-2">
-                • Use your eSewa credentials to complete the payment
-              </Text>
-              <Text className="text-sm text-gray-600">
-                • For any issues, please contact customer support
-              </Text>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Payment Information</Text>
+              <View style={styles.infoContainer}>
+                <View style={styles.infoItem}>
+                  <Ionicons
+                    name="shield-checkmark"
+                    size={20}
+                    color="#20319D"
+                    style={styles.infoIcon}
+                  />
+                  <Text style={styles.infoItemText}>
+                    Payment will be processed securely through eSewa
+                  </Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons
+                    name="swap-horizontal"
+                    size={20}
+                    color="#20319D"
+                    style={styles.infoIcon}
+                  />
+                  <Text style={styles.infoItemText}>
+                    You'll be redirected to the official eSewa login page
+                  </Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons
+                    name="log-in"
+                    size={20}
+                    color="#20319D"
+                    style={styles.infoIcon}
+                  />
+                  <Text style={styles.infoItemText}>
+                    Use your eSewa credentials to complete the payment
+                  </Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons
+                    name="help-circle"
+                    size={20}
+                    color="#20319D"
+                    style={styles.infoIcon}
+                  />
+                  <Text style={styles.infoItemText}>
+                    For any issues, please contact customer support
+                  </Text>
+                </View>
+              </View>
             </View>
           </>
         )}
@@ -376,5 +400,267 @@ const PaymentPage = () => {
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "white",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#6B7280",
+  },
+
+  // Header Styles - matched with details-page.jsx
+  headerContainer: {
+    backgroundColor: "#20319D",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "white",
+  },
+  headerRight: {
+    width: 40,
+  },
+
+  // ScrollView Styles
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 30,
+  },
+
+  // Card Styles
+  card: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 16,
+  },
+
+  // Info Row
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  infoText: {
+    fontSize: 16,
+    color: "#4B5563",
+    marginLeft: 10,
+    flex: 1,
+  },
+
+  // Amount Container
+  amountContainer: {
+    backgroundColor: "#F9FAFB",
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 8,
+    alignItems: "center",
+  },
+  amountLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 4,
+  },
+  amountValue: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#20319D",
+  },
+  amountSubtext: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 4,
+  },
+
+  // Payment Method Button
+  paymentMethodButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+  },
+  esewaLogo: {
+    width: 80,
+    height: 40,
+    resizeMode: "contain",
+  },
+  paymentMethodText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#4B5563",
+    flex: 1,
+    marginLeft: 16,
+  },
+
+  // Info Items
+  infoContainer: {
+    marginTop: 8,
+  },
+  infoItem: {
+    flexDirection: "row",
+    marginBottom: 12,
+    alignItems: "flex-start",
+  },
+  infoIcon: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  infoItemText: {
+    fontSize: 15,
+    color: "#4B5563",
+    flex: 1,
+    lineHeight: 22,
+  },
+
+  // Completed Payment
+  completedCard: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  successIconContainer: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  successIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#10B981",
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginBottom: 24,
+  },
+  detailsSection: {
+    marginBottom: 24,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  detailLabel: {
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  statusValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#10B981",
+  },
+  propertyDetailsCard: {
+    backgroundColor: "#F9FAFB",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 12,
+  },
+  propertyInfo: {
+    marginTop: 8,
+  },
+  propertyAddress: {
+    fontSize: 16,
+    color: "#4B5563",
+    lineHeight: 24,
+  },
+  returnButton: {
+    backgroundColor: "#20319D",
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "white",
+  },
+});
 
 export default PaymentPage;

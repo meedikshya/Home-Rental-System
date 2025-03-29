@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const Home = () => {
   const [properties, setProperties] = useState([]);
+  const [propertyTypes, setPropertyTypes] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -65,6 +66,12 @@ const Home = () => {
       const propertiesData = propertiesResponse;
       const imagesData = imagesResponse;
 
+      // Extract unique property types
+      const uniquePropertyTypes = [
+        ...new Set(propertiesData.map((property) => property.roomType)),
+      ];
+      setPropertyTypes(uniquePropertyTypes);
+
       // Group images by property ID
       const imagesByPropertyId = {};
       imagesData.forEach((img) => {
@@ -90,6 +97,7 @@ const Home = () => {
       });
 
       setProperties(propertiesWithImages);
+      setFilteredProperties(propertiesWithImages);
       return true;
     } catch (error) {
       console.error("Error fetching properties:", error);
@@ -97,7 +105,6 @@ const Home = () => {
       return false;
     }
   };
-
   // Function to fetch user favorites
   const fetchFavorites = async () => {
     if (!currentUserId) return;
@@ -273,6 +280,25 @@ const Home = () => {
       );
     }
 
+    // Corrected property feature filters with proper property names
+    if (filters.totalBedrooms) {
+      filtered = filtered.filter(
+        (property) => property.totalBedrooms >= filters.totalBedrooms
+      );
+    }
+
+    if (filters.totalWashrooms) {
+      filtered = filtered.filter(
+        (property) => property.totalWashrooms >= filters.totalWashrooms
+      );
+    }
+
+    if (filters.totalKitchens) {
+      filtered = filtered.filter(
+        (property) => property.totalKitchens >= filters.totalKitchens
+      );
+    }
+
     setFilteredProperties(filtered);
   };
 
@@ -336,7 +362,7 @@ const Home = () => {
           {/* Add some action buttons to balance the header */}
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerIconButton}>
-              <Ionicons name="bookmark-outline" size={24} color="white" />
+              <Ionicons name="person-circle-outline" size={26} color="white" />
             </TouchableOpacity>
           </View>
         </View>
@@ -344,7 +370,11 @@ const Home = () => {
 
       {/* Search Container */}
       <View style={styles.searchContainer}>
-        <Search onFilterApplied={applyFilters} activeFilters={activeFilters} />
+        <Search
+          onFilterApplied={applyFilters}
+          activeFilters={activeFilters}
+          propertyTypes={propertyTypes}
+        />
       </View>
 
       <ScrollView
@@ -354,164 +384,250 @@ const Home = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* No Properties Message */}
-        {filteredProperties.length === 0 && (
-          <View className="px-5 pt-1 flex items-center justify-center py-10 bg-gray-50 rounded-xl mx-5 mb-4">
-            <Ionicons name="search-outline" size={50} color="#CCCCCC" />
-            <Text className="text-lg font-semibold text-gray-600 mt-4 text-center">
-              No properties found
-            </Text>
-            <Text className="text-sm text-gray-500 mt-2 text-center px-5">
-              {activeFilters
-                ? "No properties match your search criteria. Try adjusting your filters."
-                : "There are no properties available at the moment."}
-            </Text>
-            {activeFilters && (
-              <TouchableOpacity
-                className="mt-5 bg-[#20319D] py-2 px-6 rounded-full"
-                onPress={() => applyFilters(null)}
-              >
-                <Text className="text-white font-medium">Reset Filters</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
         {/* Property Cards Section */}
         <View style={styles.propertiesSection}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="grid-outline" size={20} color="#20319D" />
+            <Ionicons name="grid-outline" size={18} color="#20319D" />
             <Text style={styles.sectionTitle}>
-              All Properties
-              {activeFilters ? " (Filtered)" : ""}
+              Properties
+              {/* {activeFilters ? " (Filtered)" : ""} */}
             </Text>
           </View>
 
-          {/* Property List */}
-          <View className="pt-1">
-            {filteredProperties.map((item) => {
-              // Handle image press (moved inside the map function)
-              const handleImagePress = (imageUri) => {
-                // Navigate to the details page with the selected image
-                router.push({
-                  pathname: "/(pages)/details-page",
-                  params: {
-                    propertyId: item.propertyId,
-                    landlordId: item.landlordId,
-                    title: item.title,
-                    description: item.description,
-                    district: item.district,
-                    city: item.city,
-                    municipality: item.municipality,
-                    ward: item.ward,
-                    nearestLandmark: item.nearestLandmark,
-                    price: item.price,
-                    roomType: item.roomType,
-                    status: item.status,
-                    createdAt: item.createdAt,
-                    totalBedrooms: item.totalBedrooms,
-                    totalLivingRooms: item.totalLivingRooms,
-                    totalWashrooms: item.totalWashrooms,
-                    totalKitchens: item.totalKitchens,
-                    image: item.image,
-                    imagesData: JSON.stringify(item.images),
-                  },
-                });
-              };
-
-              return (
-                <View
-                  key={item.propertyId.toString()}
-                  className="mb-4 bg-white rounded-xl shadow-md overflow-hidden"
+          {/* No Properties Message */}
+          {filteredProperties.length === 0 && (
+            <View className="px-5 pt-1 flex items-center justify-center py-10 bg-gray-50 rounded-xl mx-5 mb-4">
+              <Ionicons name="search-outline" size={50} color="#CCCCCC" />
+              <Text className="text-lg font-semibold text-gray-600 mt-4 text-center">
+                No properties found
+              </Text>
+              <Text className="text-sm text-gray-500 mt-2 text-center px-5">
+                {activeFilters
+                  ? "No properties match your search criteria. Try adjusting your filters."
+                  : "There are no properties available at the moment."}
+              </Text>
+              {activeFilters && (
+                <TouchableOpacity
+                  className="mt-5 bg-[#20319D] py-2 px-6 rounded-full"
+                  onPress={() => applyFilters(null)}
                 >
-                  {/* Property Image */}
-                  <View className="relative">
-                    <ImageSlider
-                      images={item.images}
-                      imageHeight={400}
-                      onImagePress={handleImagePress}
-                    />
-                    <TouchableOpacity
-                      className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-md"
-                      style={{ backgroundColor: "rgba(255,255,255,0.8)" }}
-                      onPress={() => handleFavoritePress(item.propertyId)}
-                    >
-                      <Ionicons
-                        name={
-                          favorites.includes(item.propertyId)
-                            ? "heart"
-                            : "heart-outline"
-                        }
-                        size={24}
-                        color="#20319D"
-                      />
-                    </TouchableOpacity>
-                  </View>
+                  <Text className="text-white font-medium">Reset Filters</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
-                  {/* Property Details */}
-                  <View className="p-4">
-                    <View className="flex-row justify-between items-center mb-2">
-                      <Text className="text-lg font-semibold text-gray-800">
-                        {item.title}
-                      </Text>
-                      <View
-                        className={`py-1 px-2 rounded-full border text-sm font-semibold ${getStatusBgColor(
-                          item.status
-                        )}`}
+          {/* Property Cards Section */}
+          <View style={styles.propertiesSection}>
+            <View style={styles.sectionHeader}></View>
+
+            {/* Property List */}
+            <View style={styles.propertiesGrid}>
+              {filteredProperties.map((item) => {
+                const handleImagePress = (imageUri) => {
+                  router.push({
+                    pathname: "/(pages)/details-page",
+                    params: {
+                      propertyId: item.propertyId,
+                      landlordId: item.landlordId,
+                      title: item.title,
+                      description: item.description,
+                      district: item.district,
+                      city: item.city,
+                      municipality: item.municipality,
+                      ward: item.ward,
+                      nearestLandmark: item.nearestLandmark,
+                      price: item.price,
+                      roomType: item.roomType,
+                      status: item.status,
+                      createdAt: item.createdAt,
+                      totalBedrooms: item.totalBedrooms,
+                      totalLivingRooms: item.totalLivingRooms,
+                      totalWashrooms: item.totalWashrooms,
+                      totalKitchens: item.totalKitchens,
+                      image: item.image,
+                      imagesData: JSON.stringify(item.images),
+                    },
+                  });
+                };
+
+                return (
+                  <View
+                    key={item.propertyId.toString()}
+                    style={styles.propertyCard}
+                  >
+                    {/* Property Image */}
+                    <View style={styles.imageContainer}>
+                      <ImageSlider
+                        images={item.images}
+                        imageHeight={220}
+                        onImagePress={handleImagePress}
+                      />
+                      <TouchableOpacity
+                        style={styles.favoriteButton}
+                        onPress={() => handleFavoritePress(item.propertyId)}
                       >
-                        <Text className="text-gray-800">{item.status}</Text>
+                        <Ionicons
+                          name={
+                            favorites.includes(item.propertyId)
+                              ? "heart"
+                              : "heart-outline"
+                          }
+                          size={24}
+                          color="#20319D"
+                        />
+                      </TouchableOpacity>
+
+                      {/* Add property type badge */}
+                      <View style={styles.propertyTypeBadge}>
+                        <Text style={styles.propertyTypeText}>
+                          {item.roomType}
+                        </Text>
                       </View>
                     </View>
-                    <Text className="text-gray-600 text-sm">
-                      {item.city}, {item.municipality}
-                    </Text>
-                    <Text className="text-gray-600 text-sm">
-                      Property Type: {item.roomType}
-                    </Text>
 
-                    {/* Price and Details Button */}
-                    <View className="mt-3 flex-row justify-between items-center">
-                      <Text className="text-base font-bold text-[#20319D]">
-                        Rs. {item.price}
-                      </Text>
-                      <TouchableOpacity
-                        className="bg-[#20319D] py-2 px-4 rounded-full"
-                        onPress={() =>
-                          router.push({
-                            pathname: "/(pages)/details-page",
-                            params: {
-                              propertyId: item.propertyId,
-                              landlordId: item.landlordId,
-                              title: item.title,
-                              description: item.description,
-                              district: item.district,
-                              city: item.city,
-                              municipality: item.municipality,
-                              ward: item.ward,
-                              nearestLandmark: item.nearestLandmark,
-                              price: item.price,
-                              roomType: item.roomType,
-                              status: item.status,
-                              createdAt: item.createdAt,
-                              totalBedrooms: item.totalBedrooms,
-                              totalLivingRooms: item.totalLivingRooms,
-                              totalWashrooms: item.totalWashrooms,
-                              totalKitchens: item.totalKitchens,
-                              image: item.image,
-                              imagesData: JSON.stringify(item.images),
-                            },
-                          })
-                        }
-                      >
-                        <Text className="text-white text-sm font-semibold">
-                          Details
+                    {/* Property Details */}
+                    <View style={styles.propertyDetails}>
+                      <View style={styles.titleRow}>
+                        <Text style={styles.propertyTitle} numberOfLines={1}>
+                          {item.title}
                         </Text>
-                      </TouchableOpacity>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            {
+                              backgroundColor: getStatusBgColor(
+                                item.status
+                              ).includes("red")
+                                ? "#FEE2E2"
+                                : getStatusBgColor(item.status).includes(
+                                    "green"
+                                  )
+                                ? "#DCFCE7"
+                                : "#F3F4F6",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusText,
+                              {
+                                color: getStatusBgColor(item.status).includes(
+                                  "red"
+                                )
+                                  ? "#DC2626"
+                                  : getStatusBgColor(item.status).includes(
+                                      "green"
+                                    )
+                                  ? "#16A34A"
+                                  : "#6B7280",
+                              },
+                            ]}
+                          >
+                            {item.status}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.locationRow}>
+                        <Ionicons
+                          name="location-outline"
+                          size={16}
+                          color="#666"
+                          style={styles.locationIcon}
+                        />
+                        <Text style={styles.locationText} numberOfLines={1}>
+                          {item.city}, {item.municipality}
+                        </Text>
+                      </View>
+
+                      {/* Features row */}
+                      <View style={styles.featuresRow}>
+                        {item.totalBedrooms > 0 && (
+                          <View style={styles.featureItem}>
+                            <Ionicons
+                              name="bed-outline"
+                              size={16}
+                              color="#666"
+                            />
+                            <Text style={styles.featureText}>
+                              {item.totalBedrooms}
+                            </Text>
+                          </View>
+                        )}
+
+                        {item.totalWashrooms > 0 && (
+                          <View style={styles.featureItem}>
+                            <Ionicons
+                              name="water-outline"
+                              size={16}
+                              color="#666"
+                            />
+                            <Text style={styles.featureText}>
+                              {item.totalWashrooms}
+                            </Text>
+                          </View>
+                        )}
+
+                        {item.totalKitchens > 0 && (
+                          <View style={styles.featureItem}>
+                            <Ionicons
+                              name="restaurant-outline"
+                              size={16}
+                              color="#666"
+                            />
+                            <Text style={styles.featureText}>
+                              {item.totalKitchens}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Price and Details Button */}
+                      <View style={styles.priceActionRow}>
+                        <View style={styles.priceContainer}>
+                          <Text style={styles.priceLabel}>Price</Text>
+                          <Text style={styles.priceValue}>
+                            Rs. {item.price}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.detailsButton}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/(pages)/details-page",
+                              params: {
+                                propertyId: item.propertyId,
+                                landlordId: item.landlordId,
+                                title: item.title,
+                                description: item.description,
+                                district: item.district,
+                                city: item.city,
+                                municipality: item.municipality,
+                                ward: item.ward,
+                                nearestLandmark: item.nearestLandmark,
+                                price: item.price,
+                                roomType: item.roomType,
+                                status: item.status,
+                                createdAt: item.createdAt,
+                                totalBedrooms: item.totalBedrooms,
+                                totalLivingRooms: item.totalLivingRooms,
+                                totalWashrooms: item.totalWashrooms,
+                                totalKitchens: item.totalKitchens,
+                                image: item.image,
+                                imagesData: JSON.stringify(item.images),
+                              },
+                            })
+                          }
+                        >
+                          <Text style={styles.detailsButtonText}>Details</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -525,6 +641,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F7FA",
   },
 
+  // Header Container & Search
   headerContainer: {
     backgroundColor: "#20319D",
     overflow: "hidden",
@@ -536,7 +653,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 5,
     elevation: 8,
-    paddingBottom: 30,
+    paddingBottom: 40,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   headerContent: {
     flexDirection: "row",
@@ -562,7 +681,7 @@ const styles = StyleSheet.create({
   headerIconButton: {
     padding: 8,
     marginLeft: 8,
-    // backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 8,
   },
   searchContainer: {
@@ -579,6 +698,8 @@ const styles = StyleSheet.create({
     elevation: 4,
     zIndex: 10,
   },
+
+  // Content Section
   content: {
     flex: 1,
     paddingTop: 30,
@@ -586,21 +707,173 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 30,
   },
+
+  // Section Header
   propertiesSection: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: 8,
+  },
+  sectionHeader: {
+    marginBottom: 20,
   },
   sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
-    paddingHorizontal: 4,
+    marginBottom: 6,
+    marginLeft: 8,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#333",
     marginLeft: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginLeft: 30,
+  },
+
+  // Property Grid
+  propertiesGrid: {
+    marginTop: 4,
+  },
+
+  // Property Card
+  propertyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: "hidden",
+  },
+  imageContainer: {
+    position: "relative",
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: "hidden",
+  },
+  favoriteButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 50,
+    padding: 8,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  propertyTypeBadge: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  propertyTypeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // Property Details
+  propertyDetails: {
+    padding: 16,
+  },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  propertyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+    flex: 1,
+    marginRight: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  locationIcon: {
+    marginRight: 4,
+  },
+  locationText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  featuresRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  featureText: {
+    marginLeft: 4,
+    color: "#666",
+    fontSize: 14,
+  },
+  priceActionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#F1F1F1",
+    paddingTop: 12,
+  },
+  priceContainer: {
+    flex: 1,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: "#666",
+  },
+  priceValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#20319D",
+  },
+  detailsButton: {
+    backgroundColor: "#20319D",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  detailsButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
 
