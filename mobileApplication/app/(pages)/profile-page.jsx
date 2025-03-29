@@ -123,8 +123,7 @@ const ProfilePage = () => {
       return false;
     } catch (error) {
       console.error("API call error:", error);
-      // If the API call throws but the database is updated anyway,
-      // we'll catch it in the parent function
+
       return false;
     }
   };

@@ -80,16 +80,16 @@ export const setupNotificationListeners = () => {
     // For web, we don't have foreground notification listeners like in Expo
     // Instead, we'll set up a Firebase listener and show browser notifications
 
-    const userId = getUserId();
+    const userId = FIREBASE_AUTH.currentUser?.uid;
     if (!userId) {
-      console.log("No user ID available, can't set up notification listeners");
+      console.log("No user logged in, can't set up notification listeners");
       return () => {};
     }
 
     // Listen for new notifications in Firebase
     const notificationsQuery = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId.toString()),
+      where("receiverId", "==", userId),
       where("read", "==", false)
     );
 
@@ -122,8 +122,7 @@ export const setupNotificationListeners = () => {
   }
 };
 
-// Send a notification to a specific user - EXACTLY like mobile version
-// Send a notification to a specific user - EXACT MOBILE MATCH
+// Send a notification to a specific user
 export const sendNotificationToUser = async (
   receiverId,
   title = "New Notification",
@@ -131,39 +130,69 @@ export const sendNotificationToUser = async (
   additionalData = {}
 ) => {
   try {
-    console.log("🟢 WEB APP: sendNotificationToUser called for:", receiverId);
-
-    // MUST CONVERT to string to match mobile - this is critical
-    receiverId = String(receiverId);
-
-    // Get current user as sender - EXACTLY like mobile
-    const senderId = FIREBASE_AUTH.currentUser?.uid || "system";
+    // Get current user as sender
+    const senderId = FIREBASE_AUTH.currentUser?.uid;
     if (!senderId) {
-      console.error("❌ WEB APP: No user logged in, can't send notification");
+      console.error("No user logged in, can't send notification");
       return null;
     }
 
-    console.log(
-      `🟢 WEB APP: Sending notification from ${senderId} to ${receiverId}`
-    );
-
-    // Store in Firebase with sender and receiver - EXACTLY like mobile
+    // Store in Firebase with sender and receiver
     const notificationId = await storeNotificationInFirebase(
       title,
       body,
       senderId,
       receiverId,
-      { ...additionalData, screen: additionalData.screen || "Notification" }
+      { ...additionalData, route: "/notifications" }
     );
 
-    console.log(`✅ WEB APP: Notification ID: ${notificationId}`);
+    console.log(`Notification sent from ${senderId} to ${receiverId}`);
     return notificationId;
   } catch (error) {
-    console.error("❌ WEB APP ERROR sending notification:", error);
+    console.error("Error sending notification to user:", error);
     return null;
   }
 };
-// Store notification in Firebase - EXACT MOBILE MATCH
+
+// Send a test notification (self-notification)
+export const sendTestNotification = async (
+  title = "Test Notification",
+  body = "This is a test notification"
+) => {
+  try {
+    // Get current user for both sender and receiver
+    const userId = FIREBASE_AUTH.currentUser?.uid;
+    if (!userId) {
+      console.error("No user logged in, can't send test notification");
+      return null;
+    }
+
+    // Store in Firebase - sending to self
+    const notificationId = await storeNotificationInFirebase(
+      title,
+      body,
+      userId,
+      userId,
+      { route: "/profile" }
+    );
+
+    // Show browser notification if permission granted
+    if (Notification.permission === "granted") {
+      showBrowserNotification(title, body, "/favicon.ico", () => {
+        // Mark as read when clicked
+        markNotificationAsRead(notificationId);
+      });
+    }
+
+    console.log("Test notification sent and stored in Firebase");
+    return notificationId;
+  } catch (error) {
+    console.error("Error sending test notification:", error);
+    return null;
+  }
+};
+
+// Store notification in Firebase with sender and receiver
 export const storeNotificationInFirebase = async (
   title,
   body,
@@ -172,29 +201,12 @@ export const storeNotificationInFirebase = async (
   data = {}
 ) => {
   try {
-    console.log("🟢 WEB APP: storeNotificationInFirebase called with:", {
-      title,
-      body: body.substring(0, 30) + (body.length > 30 ? "..." : ""),
-      senderId,
-      receiverId,
-      dataKeys: Object.keys(data),
-    });
-
     // Validate inputs
     if (!senderId || !receiverId) {
-      console.error("❌ WEB APP: Missing senderId or receiverId");
+      console.error("Missing senderId or receiverId");
       return null;
     }
 
-    // Ensure IDs are strings - VERY IMPORTANT
-    senderId = String(senderId);
-    receiverId = String(receiverId);
-
-    console.log(
-      `🟢 WEB APP: Using senderId: ${senderId}, receiverId: ${receiverId}`
-    );
-
-    // Create notification data object - EXACTLY like mobile
     const notificationData = {
       title,
       body,
@@ -202,65 +214,31 @@ export const storeNotificationInFirebase = async (
       receiverId,
       data,
       read: false,
-      createdAt: new Date(), // Use regular Date instead of serverTimestamp for reliability
+      createdAt: serverTimestamp(),
     };
 
-    console.log("🟢 WEB APP: About to store notification data:", {
-      title: notificationData.title,
-      body:
-        notificationData.body.substring(0, 30) +
-        (notificationData.body.length > 30 ? "..." : ""),
-      senderId: notificationData.senderId,
-      receiverId: notificationData.receiverId,
-    });
-
-    // Access Firestore collection - THE EXACT SAME AS MOBILE
+    // Add to Firestore
     const docRef = await addDoc(
       collection(FIREBASE_DB, "notifications"),
       notificationData
     );
-
-    console.log(
-      "✅ WEB APP: Notification stored in Firebase with ID:",
-      docRef.id
-    );
+    console.log("Notification stored in Firebase with ID:", docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error("❌ WEB APP ERROR storing notification:", error);
-    console.error("Error message:", error.message);
-    console.error("Error code:", error.code);
-    try {
-      console.error("Error details:", JSON.stringify(error, null, 2));
-    } catch (e) {
-      // Ignore error serialization issues
-    }
+    console.error("Error storing notification:", error);
     return null;
   }
 };
 
-// Mark notification as read - EXACTLY like mobile version
+// Mark notification as read
 export const markNotificationAsRead = async (notificationId) => {
   try {
-    console.log("Marking notification as read:", notificationId);
-
-    // Use the getUserId function
-    const userId = getUserId();
-    if (!userId) {
-      console.error("No user ID available to mark notification as read");
-      return false;
-    }
-
-    console.log("User ID retrieved:", userId);
-
-    // Get the notification document
     const notificationRef = doc(FIREBASE_DB, "notifications", notificationId);
-
-    // Simply update the read status
     await updateDoc(notificationRef, {
       read: true,
+      readAt: serverTimestamp(),
     });
-
-    console.log("Notification marked as read successfully");
+    console.log("Notification marked as read:", notificationId);
     return true;
   } catch (error) {
     console.error("Error marking notification as read:", error);
@@ -268,104 +246,76 @@ export const markNotificationAsRead = async (notificationId) => {
   }
 };
 
-// User ID function - SIMPLIFIED to match mobile version
-export const getUserId = (passedUserId = null) => {
-  try {
-    // If a userId is explicitly passed, use it first
-    if (passedUserId !== null && passedUserId !== undefined) {
-      return passedUserId.toString();
-    }
-
-    // For web, try to get from Firebase Auth first - JUST LIKE MOBILE
-    const firebaseUser = FIREBASE_AUTH.currentUser;
-    if (firebaseUser && firebaseUser.uid) {
-      return firebaseUser.uid.toString();
-    }
-
-    // Web fallback - check localStorage
-    const userData = JSON.parse(localStorage.getItem("user") || "{}");
-    if (userData.userId || userData.id || userData.uid) {
-      return (userData.userId || userData.id || userData.uid).toString();
-    }
-
-    console.warn("Could not find user ID");
-    return null;
-  } catch (error) {
-    console.error("Error getting user ID:", error);
-    return null;
-  }
-};
-
-// Function to listen for user's notifications - EXACTLY like mobile
+// Function to listen for user's notifications (as receiver)
 export const listenForUserNotifications = (callback, passedUserId = null) => {
   try {
-    // Get the current user ID, passing along any provided userId
+    // Get current user ID or use passed ID
     const userId = passedUserId || FIREBASE_AUTH.currentUser?.uid;
-    console.log(
-      "Setting up notification listener for user ID:",
-      userId,
-      passedUserId ? "(from passed parameter)" : "(from Firebase Auth)"
-    );
 
     if (!userId) {
-      console.error("No user ID available for notifications");
+      console.log("No user ID available for notifications");
       callback([]);
       return () => {};
     }
 
-    // IMPORTANT: Convert userId to string to match format in Firebase
-    const userIdString = userId.toString();
-    console.log("Using userId as string:", userIdString);
+    // CRITICAL: Convert to string to match Firestore format
+    const userIdString = String(userId);
+    console.log(
+      "Setting up notification listener for receiverId:",
+      userIdString
+    );
 
-    // Create a query for notifications where receiverId equals the current user's ID
-    const q = query(
+    // Create query for notifications where user is the RECEIVER
+    const notificationsQuery = query(
       collection(FIREBASE_DB, "notifications"),
       where("receiverId", "==", userIdString),
       orderBy("createdAt", "desc")
     );
 
-    console.log("Query created for receiverId:", userIdString);
-
-    // Set up the listener
+    // Setup real-time listener
     const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
+      notificationsQuery,
+      (snapshot) => {
         const notifications = [];
-        querySnapshot.forEach((doc) => {
-          // Convert Firestore timestamp to JavaScript Date
+        snapshot.forEach((doc) => {
+          // Convert Firestore Timestamp to JS Date for display
           const data = doc.data();
 
-          // Log notification details for debugging
-          console.log("Found notification:", doc.id, {
+          console.log("Found notification:", {
+            id: doc.id,
             title: data.title,
-            receiverId: data.receiverId,
-            read: data.read,
+            action: data.data?.action || "unknown",
           });
+
+          // Format timestamp - different handling for web vs mobile
+          let createdAt = null;
+          if (data.createdAt) {
+            createdAt =
+              data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : new Date(data.createdAt);
+          } else {
+            createdAt = new Date();
+          }
 
           notifications.push({
             id: doc.id,
             ...data,
-            createdAt:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toDate()
-                : data.createdAt
-                ? new Date(data.createdAt)
-                : new Date(),
+            createdAt,
           });
         });
 
-        console.log(
-          `Retrieved ${notifications.length} notifications for user ${userIdString}`
-        );
+        // Pass notifications to callback
         callback(notifications);
       },
       (error) => {
-        console.error("Error fetching notifications:", error);
+        console.error("Error listening for notifications:", error);
         callback([]);
       }
     );
 
-    return unsubscribe;
+    // Return unsubscribe function with safety check
+    return typeof unsubscribe === "function" ? unsubscribe : () => {};
   } catch (error) {
     console.error("Error setting up notification listener:", error);
     callback([]);
@@ -373,61 +323,148 @@ export const listenForUserNotifications = (callback, passedUserId = null) => {
   }
 };
 
-// Direct fetch function when listener fails - EXACTLY like mobile
-export const directFetchNotifications = async (userId = null) => {
+// Fetch both chat notifications and agreement notifications specifically
+export const fetchSpecificNotifications = async (userId) => {
+  if (!userId) {
+    console.error("No user ID provided");
+    return [];
+  }
+
+  // Convert to string to match Firebase format
+  const userIdString = String(userId);
+  console.log("Fetching specific notifications for user:", userIdString);
+
   try {
-    if (!userId) {
-      userId = FIREBASE_AUTH.currentUser?.uid;
-    }
-
-    if (!userId) {
-      console.error("No user ID available for direct notification fetch");
-      return [];
-    }
-
-    const userIdString = userId.toString();
-    console.log("Directly fetching notifications for userId:", userIdString);
-
-    const notificationsQuery = query(
+    // First query agreement notifications
+    const agreementQuery = query(
       collection(FIREBASE_DB, "notifications"),
       where("receiverId", "==", userIdString),
+      where("data.action", "==", "view_agreement"),
       orderBy("createdAt", "desc")
     );
 
-    const querySnapshot = await getDocs(notificationsQuery);
-    const notifications = [];
+    const agreementSnapshot = await getDocs(agreementQuery);
+    const agreementNotifications = [];
 
-    querySnapshot.forEach((doc) => {
+    agreementSnapshot.forEach((doc) => {
       const data = doc.data();
-      notifications.push({
+      console.log("Found agreement notification:", {
+        id: doc.id,
+        title: data.title,
+        body: data.body,
+      });
+
+      agreementNotifications.push({
         id: doc.id,
         ...data,
-        createdAt:
-          data.createdAt instanceof Timestamp
-            ? data.createdAt.toDate()
-            : data.createdAt
-            ? new Date(data.createdAt)
-            : new Date(),
+        createdAt: data.createdAt?.toDate?.() || new Date(),
       });
     });
 
-    console.log(
-      `Directly fetched ${notifications.length} notifications for user ${userIdString}`
+    // Then query chat notifications
+    const chatQuery = query(
+      collection(FIREBASE_DB, "notifications"),
+      where("receiverId", "==", userIdString),
+      where("data.action", "==", "view_chat"),
+      orderBy("createdAt", "desc")
     );
-    return notifications;
+
+    const chatSnapshot = await getDocs(chatQuery);
+    const chatNotifications = [];
+
+    chatSnapshot.forEach((doc) => {
+      const data = doc.data();
+      console.log("Found chat notification:", {
+        id: doc.id,
+        title: data.title,
+        body: data.body,
+      });
+
+      chatNotifications.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+      });
+    });
+
+    // Combine results
+    const allSpecificNotifications = [
+      ...agreementNotifications,
+      ...chatNotifications,
+    ];
+    console.log(
+      `Found ${agreementNotifications.length} agreement and ${chatNotifications.length} chat notifications`
+    );
+
+    return allSpecificNotifications;
   } catch (error) {
-    console.error("Error directly fetching notifications:", error);
+    console.error("Error fetching specific notifications:", error);
     return [];
   }
 };
 
-// Get count of unread notifications - EXACTLY like mobile
+// Get notifications between two specific users
+export const getNotificationsBetweenUsers = (
+  senderId,
+  receiverId,
+  callback
+) => {
+  try {
+    if (!senderId || !receiverId) {
+      console.error("Missing senderId or receiverId");
+      callback([]);
+      return () => {};
+    }
+
+    // Query for notifications between these users
+    const notificationsQuery = query(
+      collection(FIREBASE_DB, "notifications"),
+      where("senderId", "==", senderId),
+      where("receiverId", "==", receiverId),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const notifications = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const createdAt =
+            data.createdAt instanceof Timestamp
+              ? data.createdAt.toDate()
+              : new Date(data.createdAt);
+
+          notifications.push({
+            id: doc.id,
+            ...data,
+            createdAt,
+          });
+        });
+
+        callback(notifications);
+      },
+      (error) => {
+        console.error("Error getting notifications between users:", error);
+        callback([]);
+      }
+    );
+
+    return typeof unsubscribe === "function" ? unsubscribe : () => {};
+  } catch (error) {
+    console.error("Error setting up notifications between users:", error);
+    callback([]);
+    return () => {};
+  }
+};
+
+// Get count of unread notifications
 export const getUnreadNotificationCount = (callback) => {
   try {
     // Get current user ID
     const userId = FIREBASE_AUTH.currentUser?.uid;
     if (!userId) {
-      console.log("No user ID available, can't get unread count");
+      console.log("No user logged in, can't get unread count");
       callback(0);
       return () => {};
     }
@@ -435,7 +472,7 @@ export const getUnreadNotificationCount = (callback) => {
     // Create query for unread notifications where user is RECEIVER
     const unreadQuery = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId.toString()),
+      where("receiverId", "==", userId),
       where("read", "==", false)
     );
 
@@ -459,19 +496,19 @@ export const getUnreadNotificationCount = (callback) => {
   }
 };
 
-// Mark all notifications as read - EXACTLY like mobile
+// Mark all notifications as read
 export const markAllNotificationsAsRead = async () => {
   try {
     const userId = FIREBASE_AUTH.currentUser?.uid;
     if (!userId) {
-      console.error("No user ID available");
+      console.error("No user logged in");
       return false;
     }
 
     // Get all unread notifications
     const unreadQuery = query(
       collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId.toString()),
+      where("receiverId", "==", userId),
       where("read", "==", false)
     );
 
@@ -489,6 +526,7 @@ export const markAllNotificationsAsRead = async () => {
       promises.push(
         updateDoc(notificationRef, {
           read: true,
+          readAt: serverTimestamp(),
         })
       );
     });
@@ -502,10 +540,9 @@ export const markAllNotificationsAsRead = async () => {
   }
 };
 
-// Initialize notification system - modified for web
+// Initialize notification system
 export const initializeNotifications = async () => {
   try {
-    // For web, request permission
     const hasPermission = await requestNotificationPermission();
 
     if (hasPermission) {
