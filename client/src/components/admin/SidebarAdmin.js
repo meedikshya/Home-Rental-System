@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { MdSpaceDashboard, MdHolidayVillage } from "react-icons/md";
-import { BsGraphUp, BsCalendarCheck } from "react-icons/bs";
+import { BsCalendarCheck } from "react-icons/bs";
 import { HiDocumentText, HiMenuAlt3 } from "react-icons/hi";
-import { FaMoneyCheckAlt } from "react-icons/fa";
+import { FaMoneyCheckAlt, FaUsers } from "react-icons/fa";
 
 const SidebarAdmin = () => {
   const [open, setOpen] = useState(true);
@@ -31,9 +31,9 @@ const SidebarAdmin = () => {
       icon: <MdSpaceDashboard />,
     },
     {
-      title: "Analytics",
+      title: "Users",
       path: "/admin/analytics",
-      icon: <BsGraphUp />,
+      icon: <FaUsers />,
     },
     {
       title: "Properties",

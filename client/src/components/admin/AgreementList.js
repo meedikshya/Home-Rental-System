@@ -437,7 +437,7 @@ const AgreementList = ({
                     scope="col"
                     className="w-[5%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    #
+                    S.N
                   </th>
                   <th
                     scope="col"

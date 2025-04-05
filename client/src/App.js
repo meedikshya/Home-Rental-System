@@ -27,7 +27,7 @@ import NotificationPage from "./components/Landlord/Notification.js";
 // Admin imports
 import LayoutAdmin from "./components/admin/LayoutAdmin.js";
 import Agreements from "./pages/Admin/Agreements.js";
-import Analytics from "./pages/Admin/Analytics.js";
+import Analytics from "./pages/Admin/User.js";
 import Bookings from "./pages/Admin/Bookings.js";
 import Dashboard from "./pages/Admin/Dashboard.js";
 import Payments from "./pages/Admin/Payments.js";

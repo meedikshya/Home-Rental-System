@@ -5,7 +5,6 @@ const CountCard = ({
   title,
   value,
   icon,
-  color = "#20319D",
   trend = null,
   subtitle = null,
   previousValue = null,
@@ -40,35 +39,61 @@ const CountCard = ({
     );
   };
 
+  // Define icon styles
+  const iconStyle = {
+    borderRadius: "9999px", // Make it circular
+    padding: "0.75rem", // Equivalent to p-3
+    color: "white",
+    boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "1.25rem", // Adjust as needed
+  };
+
+  // Define background colors for different cards
+  const cardBackgroundColors = {
+    totalUsers: "#4CAF50", // Green
+    landlords: "#2196F3", // Blue
+    renters: "#FF9800", // Orange
+    properties: "#9C27B0", // Purple
+    default: "#607D8B", // Gray
+  };
+
+  // Determine background color based on title
+  const getBackgroundColor = () => {
+    switch (title) {
+      case "Total Users":
+        return cardBackgroundColors.totalUsers;
+      case "Landlords":
+        return cardBackgroundColors.landlords;
+      case "Renters":
+        return cardBackgroundColors.renters;
+      case "Properties":
+        return cardBackgroundColors.properties;
+      default:
+        return cardBackgroundColors.default;
+    }
+  };
+
+  const backgroundColor = getBackgroundColor();
+
   return (
     <div
       className={`bg-white rounded-xl shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group ${className}`}
     >
-      {/* Colored top border with animated gradient */}
-      <div className="h-1.5 w-full bg-gradient-to-r from-transparent via-white to-transparent overflow-hidden relative">
+      <div className="h-1.5 w-full overflow-hidden relative">
         <div
           className="absolute inset-0 group-hover:translate-x-full transition-transform duration-1000"
           style={{
-            background: `linear-gradient(90deg, transparent, ${color}80, transparent)`,
+            background: `linear-gradient(90deg, transparent, #fff, transparent)`,
           }}
-        ></div>
-        <div
-          className="absolute inset-0"
-          style={{ backgroundColor: color }}
         ></div>
       </div>
 
       <div className="p-5 relative">
         <div className="flex items-center justify-between mb-4">
-          <div
-            className="rounded-full p-3 text-white transform transition-transform group-hover:scale-110"
-            style={{
-              backgroundColor: color,
-              boxShadow: `0 3px 10px ${color}50`,
-            }}
-          >
-            {icon}
-          </div>
+          <div style={{ ...iconStyle, backgroundColor }}>{icon}</div>
 
           {/* Title and subtitle */}
           <div className="flex flex-col items-end">
@@ -83,7 +108,7 @@ const CountCard = ({
           {/* Main value with growth animation on hover */}
           <div
             className="text-4xl font-bold transform transition-all group-hover:scale-105 origin-left"
-            style={{ color }}
+            style={{ color: "#333" }}
           >
             {loading ? (
               <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
@@ -123,7 +148,7 @@ const CountCard = ({
         <div
           className="absolute inset-0 -z-10 opacity-10 group-hover:opacity-20 transition-opacity"
           style={{
-            backgroundImage: `radial-gradient(circle at 90% 10%, ${color}, transparent 70%)`,
+            backgroundImage: `radial-gradient(circle at 90% 10%, ${backgroundColor}, transparent 70%)`,
           }}
         ></div>
 
@@ -136,12 +161,12 @@ const CountCard = ({
           >
             <path
               d="M0,25 C10,10 30,40 50,25 C70,10 90,40 100,25 L100,50 L0,50 Z"
-              fill={color}
+              fill={backgroundColor}
               opacity="0.3"
             />
             <path
               d="M0,25 C20,15 40,35 60,25 C80,15 100,35 100,25 L100,50 L0,50 Z"
-              fill={color}
+              fill={backgroundColor}
               opacity="0.3"
             />
           </svg>

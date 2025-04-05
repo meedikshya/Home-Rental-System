@@ -43,7 +43,6 @@ import {
 import CountCard from "../../components/Dashboard/CountCard.js";
 import { DashboardProvider } from "../../components/Dashboard/DashboardProvider.js";
 import PropertyBookingJourney from "../../components/Dashboard/PropertyBookingJourney.js";
-import KeyPerformanceMetrics from "../../components/Dashboard/KeyPerformanceMetrics.js";
 import UserDistributionChart from "../../components/Dashboard/UserDistributionChart.js";
 import PlatformActivityMetricsChart from "../../components/Dashboard/PlatformActivityMetricsChart.js";
 
@@ -62,7 +61,7 @@ const Dashboard = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [timeRange, setTimeRange] = useState("all"); // all, month, week
+  const [timeRange, setTimeRange] = useState("all");
   const [selectedStat, setSelectedStat] = useState(null);
 
   // Function to fetch all stats
@@ -246,20 +245,14 @@ const Dashboard = () => {
   return (
     <DashboardProvider>
       <div className="p-4 md:p-6 lg:p-8 bg-slate-50 min-h-screen">
-        {/* Subtle background pattern */}
         <div className="fixed inset-0 bg-gradient-to-br from-indigo-50 to-blue-50 opacity-70 -z-10"></div>
         <div className="fixed inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiMzOTQ5QUIiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0aDR2MWgtNHYtMXptMC0xaDR2LTFoLTR2MXptMC0yaDF2LTRoLTF2NHptLTItMWgxdi0yaC0xdjJ6bS0yNSAxa3ZoLTF2MWgxdi0xem0wLTFoLTF2MWgxdi0xem0wLTJoLTF2MWgxdi0xem0wLTJoLTF2MWgxdi0xem0wLTJoLTF2MWgxdi0xem0wLTJoLTF2MWgxdi0xem0wLTJoLTF2MWgxdi0xem0wLTJoLTF2MWgxdi0xem00IDBoLTF2MWgxdi0xeiIvPjwvZz48L2c+PC9zdmc+')] -z-10 opacity-30"></div>
 
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Modern header section */}
-          <header className="bg-gradient-to-r from-[#20319D] to-[#4051B5] text-white p-5 md:p-6 rounded-2xl shadow-lg overflow-hidden relative">
-            {/* Decorative elements */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full -translate-y-1/3 translate-x-1/3"></div>
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-10 rounded-full translate-y-1/3 -translate-x-1/3"></div>
-
+          <header className="mb-6 bg-[#20319D] text-white p-6 rounded-lg shadow-md">
             <div className="flex flex-col md:flex-row justify-between items-center relative z-10">
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold flex items-center mb-2">
+                <h1 className="text-2xl md:text-xl font-bold flex items-center mb-2">
                   <FaChartBar className="mr-3" /> Admin Dashboard
                 </h1>
               </div>
@@ -291,47 +284,11 @@ const Dashboard = () => {
 
           {loading ? (
             <div className="flex flex-col justify-center items-center h-96 bg-white rounded-2xl shadow-md">
-              <div className="w-16 h-16 border-4 border-[#20319D] border-t-transparent rounded-full animate-spin mb-4"></div>
+              <div className="w-16 h-16 border-4  border-t-transparent rounded-full animate-spin mb-4"></div>
               <p className="text-gray-500 text-lg">Loading dashboard data...</p>
             </div>
           ) : (
             <>
-              {/* Mobile time range selector */}
-              <div className="flex md:hidden overflow-auto pb-2 no-scrollbar">
-                <div className="flex rounded-full overflow-hidden border border-indigo-200 text-sm bg-white shadow-sm">
-                  <button
-                    className={`px-4 py-1.5 ${
-                      timeRange === "all"
-                        ? "bg-indigo-100 text-indigo-800"
-                        : "text-gray-600"
-                    }`}
-                    onClick={() => setTimeRange("all")}
-                  >
-                    All Time
-                  </button>
-                  <button
-                    className={`px-4 py-1.5 ${
-                      timeRange === "month"
-                        ? "bg-indigo-100 text-indigo-800"
-                        : "text-gray-600"
-                    }`}
-                    onClick={() => setTimeRange("month")}
-                  >
-                    This Month
-                  </button>
-                  <button
-                    className={`px-4 py-1.5 ${
-                      timeRange === "week"
-                        ? "bg-indigo-100 text-indigo-800"
-                        : "text-gray-600"
-                    }`}
-                    onClick={() => setTimeRange("week")}
-                  >
-                    This Week
-                  </button>
-                </div>
-              </div>
-
               {/* Key metrics grid - more responsive and modern */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div

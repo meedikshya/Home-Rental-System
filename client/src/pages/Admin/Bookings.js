@@ -114,7 +114,7 @@ const Bookings = () => {
       <div className="mb-6 bg-[#20319D] text-white p-6 rounded-lg shadow-md">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center">
           <div className="mb-4 md:mb-0">
-            <h1 className="text-3xl font-bold mb-2 flex items-center">
+            <h1 className="text-xl font-bold mb-2 flex items-center">
               <FaCalendarAlt className="mr-2" /> Booking Management
             </h1>
             {/* <p className="text-blue-100">
