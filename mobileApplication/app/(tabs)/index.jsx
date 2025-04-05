@@ -2,15 +2,12 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   Text,
   View,
-  FlatList,
   ActivityIndicator,
   TouchableOpacity,
   Dimensions,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
-  Image,
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";

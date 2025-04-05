@@ -116,7 +116,6 @@ const PaymentPage = () => {
 
         console.log("Opening bridge URL:", bridgeUrl);
 
-        // Different approach for different platforms
         let result;
         if (Platform.OS === "ios") {
           // For iOS, Safari works better with form submission
@@ -213,7 +212,6 @@ const PaymentPage = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header - Similar to details-page.jsx */}
       <View style={styles.headerContainer}>
         <View style={[styles.headerContent, { paddingTop: insets.top }]}>
           <TouchableOpacity

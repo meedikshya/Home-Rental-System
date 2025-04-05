@@ -36,10 +36,18 @@ export const LoginForm = () => {
 
   // Add a ref to track if logout has already been performed
   const logoutPerformedRef = useRef(false);
+  // Add a ref to track initial mount
+  const initialMountRef = useRef(true);
 
   // Auto-logout when navigating to login page while already authenticated
   useEffect(() => {
-    // Skip effect during login attempts and initial loading
+    // Skip the effect entirely on initial mount
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      return;
+    }
+
+    // Skip effect during login attempts, loading, or if logout already performed
     if (loginAttempt || loading || logoutPerformedRef.current) {
       return;
     }

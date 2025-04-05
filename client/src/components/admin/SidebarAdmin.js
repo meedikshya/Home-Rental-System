@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { MdSpaceDashboard, MdOutlineChat } from "react-icons/md";
-import { BsCalendarCheck } from "react-icons/bs";
+import { useLocation, Link } from "react-router-dom";
+import { MdSpaceDashboard, MdHolidayVillage } from "react-icons/md";
+import { BsGraphUp, BsCalendarCheck } from "react-icons/bs";
+import { HiDocumentText, HiMenuAlt3 } from "react-icons/hi";
 import { FaMoneyCheckAlt } from "react-icons/fa";
-import { HiMenuAlt3 } from "react-icons/hi";
-import { BsGraphUp } from "react-icons/bs";
-import { MdHolidayVillage } from "react-icons/md";
-import { HiDocumentText } from "react-icons/hi";
-import Logo from "../../assets/images/Logo.png";
 
 const SidebarAdmin = () => {
   const [open, setOpen] = useState(true);
@@ -44,7 +40,6 @@ const SidebarAdmin = () => {
       path: "/admin/properties",
       icon: <MdHolidayVillage />,
     },
-
     {
       title: "Bookings",
       path: "/admin/bookings",
@@ -73,19 +68,17 @@ const SidebarAdmin = () => {
         }}
       >
         <div className="h-full bg-blue-900 text-white p-4 flex flex-col shadow-lg">
-          {/* Top Section: Logo & Hamburger */}
+          {/* Top Section: Title & Toggle Button */}
           <div className="flex items-center justify-between mb-6">
             {open && (
-              <img
-                src={Logo}
-                alt="Logo"
-                className="w-32 transition-all duration-300"
-              />
+              <h1 className="text-xl font-bold transition-all duration-300">
+                Admin Panel
+              </h1>
             )}
 
             {/* Toggle Button */}
             <button
-              className="text-3xl cursor-pointer hover:text-gray-300 transition-colors p-1"
+              className="text-3xl cursor-pointer hover:text-blue-300 transition-colors p-1"
               onClick={() => setOpen(!open)}
               aria-label="Toggle sidebar"
             >
@@ -100,8 +93,7 @@ const SidebarAdmin = () => {
                 <li
                   className={`flex items-center gap-x-4 p-3 rounded-lg cursor-pointer transition-all duration-200 
                   ${
-                    location.pathname === menu.path ||
-                    location.pathname.startsWith(`${menu.path}/`)
+                    location.pathname === menu.path
                       ? "bg-blue-700"
                       : "hover:bg-blue-800"
                   }`}
@@ -117,6 +109,7 @@ const SidebarAdmin = () => {
         </div>
       </div>
 
+      {/* Spacer div to maintain layout */}
       <div
         className="transition-all duration-300"
         style={{
