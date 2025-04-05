@@ -20,6 +20,7 @@ import {
 } from "react-icons/fa";
 import ApiHandler from "../../api/ApiHandler.js";
 import PaginationControls from "../../components/UI/PaginationControls.js";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 
 const User = () => {
   // Main data states
@@ -46,6 +47,8 @@ const User = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isPageLoaded, setIsPageLoaded] = useState(false);
+
+  const navigate = useNavigate();
 
   // Role options for filtering
   const roleOptions = [
@@ -196,7 +199,8 @@ const User = () => {
 
     switch (action) {
       case "view":
-        setShowUserModal(true);
+        // setShowUserModal(true);
+        navigate(`/admin/user-profile/${user.userId}`);
         break;
       case "edit":
         // Handle edit action

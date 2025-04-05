@@ -33,6 +33,7 @@ import Dashboard from "./pages/Admin/Dashboard.js";
 import Payments from "./pages/Admin/Payments.js";
 import Properties from "./pages/Admin/Properties.js";
 import AdminPanel from "./pages/Admin/AdminPanel.js";
+import UserProfileDetails from "./components/admin/UserProfileDetails.js";
 
 // Auth and utilities
 import SessionTimeoutProvider from "./hooks/sessionProvider.js";
@@ -103,6 +104,10 @@ function App() {
                     <Route path="payments" element={<Payments />} />
                     <Route path="analytics" element={<Analytics />} />
                     <Route path="agreements" element={<Agreements />} />
+                    <Route
+                      path="user-profile/:userId"
+                      element={<UserProfileDetails />}
+                    />
                     {/* Legacy admin panel as fallback */}
                     <Route path="panel" element={<AdminPanel />} />
                     {/* Default admin route - redirect to dashboard */}
