@@ -5,15 +5,15 @@ const PaginationControls = ({ currentPage, totalPages, setCurrentPage }) => {
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex justify-center mt-8">
-      <div className="bg-white rounded-lg shadow px-3 py-2 flex items-center space-x-1">
+    <div className="flex justify-center">
+      <div className="bg-white rounded-lg shadow-sm px-3 py-2 flex items-center space-x-1">
         <button
           onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
           className={`p-2 rounded-md transition-colors ${
             currentPage === 1
               ? "text-gray-300 cursor-not-allowed"
-              : "text-blue-500 hover:bg-blue-50"
+              : "text-[#20319D] hover:bg-[#20319D]/10"
           }`}
           aria-label="Previous page"
         >
@@ -37,8 +37,8 @@ const PaginationControls = ({ currentPage, totalPages, setCurrentPage }) => {
                   onClick={() => setCurrentPage(pageNum)}
                   className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
                     currentPage === pageNum
-                      ? "bg-blue-500 text-white font-medium"
-                      : "text-gray-700 hover:bg-blue-50"
+                      ? "bg-[#20319D] text-white font-medium"
+                      : "text-gray-700 hover:bg-[#20319D]/10"
                   }`}
                 >
                   {pageNum}
@@ -65,7 +65,7 @@ const PaginationControls = ({ currentPage, totalPages, setCurrentPage }) => {
           className={`p-2 rounded-md transition-colors ${
             currentPage === totalPages
               ? "text-gray-300 cursor-not-allowed"
-              : "text-blue-500 hover:bg-blue-50"
+              : "text-[#20319D] hover:bg-[#20319D]/10"
           }`}
           aria-label="Next page"
         >

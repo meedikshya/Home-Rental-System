@@ -611,7 +611,7 @@ const Properties = () => {
           <h1 className="text-3xl font-bold mb-2 flex items-center">
             <FaBuilding className="mr-2" /> Property Management
           </h1>
-          <p className="text-blue-100">Manage all properties in the system</p>
+          {/* <p className="text-blue-100">Manage all properties in the system</p> */}
         </div>
 
         {/* Top Right Filters and Landlord Selection */}
