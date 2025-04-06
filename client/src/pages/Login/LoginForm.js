@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
@@ -25,6 +25,7 @@ const getUserRoleFromToken = (token) => {
 
 export const LoginForm = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Add this to detect navigation changes
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setSubmitting] = useState(false);
@@ -38,24 +39,118 @@ export const LoginForm = () => {
   const logoutPerformedRef = useRef(false);
   // Add a ref to track initial mount
   const initialMountRef = useRef(true);
+  // Add a ref to track if this is an explicit navigation
+  const isExplicitNavigationRef = useRef(false);
+  // Add timestamp for server restart detection
+  const pageLoadTime = useRef(Date.now());
+  // Track server restart state
+  const [isServerRestart, setIsServerRestart] = useState(false);
+
+  // Check for navigation to login via history
+  useEffect(() => {
+    // If location changes with a new key, it's an explicit navigation
+    if (!initialMountRef.current && location.key) {
+      isExplicitNavigationRef.current = true;
+    }
+  }, [location]);
+
+  // Auto-redirect for logged-in users on server restart
+  useEffect(() => {
+    // Run on initial load only
+    if (!initialMountRef.current) return;
+
+    const checkServerRestart = () => {
+      const lastActivity = localStorage.getItem("lastUserActivity");
+      // Consider it a server restart if:
+      // 1. Page just loaded
+      // 2. Last activity exists but was recent (within 5 seconds)
+      const now = Date.now();
+
+      if (lastActivity) {
+        const timeSinceLastActivity = now - parseInt(lastActivity, 10);
+        // If last activity was recent but page refreshed, likely a server restart
+        if (timeSinceLastActivity < 5000) {
+          setIsServerRestart(true);
+          console.log("Detected server restart");
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Update last activity timestamp
+    const updateActivityTimestamp = () => {
+      localStorage.setItem("lastUserActivity", Date.now().toString());
+    };
+
+    // Set up activity tracking
+    updateActivityTimestamp();
+    window.addEventListener("click", updateActivityTimestamp);
+    window.addEventListener("keypress", updateActivityTimestamp);
+
+    const redirectIfNeeded = async () => {
+      initialMountRef.current = false;
+
+      // Skip if still loading auth state
+      if (loading) return;
+
+      // Check if this is likely a server restart
+      const isRestart = checkServerRestart();
+
+      // If logged in and it's a server restart, redirect to appropriate page
+      if (currentUser && isRestart) {
+        logoutPerformedRef.current = true; // Prevent auto-logout
+
+        try {
+          // Check if token is still valid
+          const jwtToken = localStorage.getItem("jwtToken");
+          if (!jwtToken) return; // No token, can't redirect
+
+          // Get user role and redirect
+          const userRole = getUserRoleFromToken(jwtToken);
+
+          if (userRole === "Landlord") {
+            setTimeout(() => navigate("/landlord/property"), 100);
+          } else if (userRole === "Admin") {
+            setTimeout(() => navigate("/admin/dashboard"), 100);
+          } else {
+            setTimeout(() => navigate("/"), 100);
+          }
+        } catch (error) {
+          console.error("Error during restart redirect:", error);
+        }
+      }
+    };
+
+    // Execute redirect logic
+    redirectIfNeeded();
+
+    return () => {
+      // Clean up event listeners
+      window.removeEventListener("click", updateActivityTimestamp);
+      window.removeEventListener("keypress", updateActivityTimestamp);
+    };
+  }, [currentUser, loading, navigate]);
 
   // Auto-logout when navigating to login page while already authenticated
   useEffect(() => {
-    // Skip the effect entirely on initial mount
-    if (initialMountRef.current) {
-      initialMountRef.current = false;
+    // Skip if loading, in login process, already logged out, or on server restart
+    if (
+      loading ||
+      loginAttempt ||
+      logoutPerformedRef.current ||
+      isServerRestart
+    ) {
       return;
     }
 
-    // Skip effect during login attempts, loading, or if logout already performed
-    if (loginAttempt || loading || logoutPerformedRef.current) {
-      return;
-    }
-
-    // Only run if user is logged in and we're not in the middle of login process
-    if (currentUser && !isSubmitting) {
+    // Only log out if:
+    // 1. User is logged in
+    // 2. This was an explicit navigation to login page (not initial load)
+    // 3. Not in the middle of submitting login form
+    if (currentUser && !isSubmitting && isExplicitNavigationRef.current) {
       console.log(
-        "User already logged in but on login page. Performing auto-logout..."
+        "Explicit navigation to login while logged in. Logging out..."
       );
 
       // Set the ref to true to prevent double execution
@@ -79,12 +174,7 @@ export const LoginForm = () => {
           console.error("Sign-out error:", error);
         });
     }
-
-    // Cleanup function
-    return () => {
-      // Nothing needed here, the ref persists
-    };
-  }, [currentUser, loading, isSubmitting, loginAttempt]);
+  }, [currentUser, loading, isSubmitting, loginAttempt, isServerRestart]);
 
   const handleRegister = () => {
     navigate("/register");
@@ -163,6 +253,9 @@ export const LoginForm = () => {
         role: userRole,
       };
       localStorage.setItem("user", JSON.stringify(userData));
+
+      // Update last activity timestamp
+      localStorage.setItem("lastUserActivity", Date.now().toString());
 
       toast.success(`Signed in successfully as ${userRole || "User"}`);
 

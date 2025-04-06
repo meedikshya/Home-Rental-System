@@ -1,51 +1,43 @@
-import React, { useState, useEffect, useMemo } from "react";
-import {
-  getDoc,
-  doc,
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-} from "firebase/firestore";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { FIREBASE_DB } from "../../services/Firebase-config.js";
-import { getUserDataFromFirebase } from "../../context/AuthContext.js";
+import {
+  getUserDataFromFirebase,
+  getFirebaseIdFromUserId,
+} from "../../context/AuthContext.js";
 import ApiHandler from "../../api/ApiHandler.js";
 import {
   listenForUserNotifications,
   markNotificationAsRead,
-  markAllNotificationsAsRead,
 } from "../../services/Firebase-notification.js";
 import {
   FiBell,
-  FiRefreshCw,
+  FiClock,
+  FiCircle,
   FiMessageCircle,
-  FiFileText,
+  FiHome,
+  FiFile,
+  FiCalendar,
+  FiDollarSign,
+  FiInfo,
+  FiPackage,
 } from "react-icons/fi";
-import { useNavigate } from "react-router-dom";
 
-// Modified to accept userId prop from parent component
 const NotificationPage = ({
   userId,
   navigateFunction,
   onUnreadCountChange,
 }) => {
-  console.log(
-    "NotificationPage rendering",
-    userId ? `with userId: ${userId}` : "without userId prop"
-  );
-
   const [notifications, setNotifications] = useState([]);
   const [usernames, setUsernames] = useState({});
   const [currentUserId, setCurrentUserId] = useState(userId || null);
+  const [firebaseUserId, setFirebaseUserId] = useState(null);
   const [currentUserName, setCurrentUserName] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
-  const defaultNavigate = useNavigate();
-  const navigate = navigateFunction || defaultNavigate;
+  const fetchedUserIds = useRef(new Set());
 
-  // Calculate unread count
+  // Calculate unread count and expose it to parent component
   const unreadCount = useMemo(() => {
     const count = notifications.filter(
       (notification) => !notification.read
@@ -58,24 +50,60 @@ const NotificationPage = ({
     return count;
   }, [notifications, onUnreadCountChange]);
 
-  // Direct fetch function when listener fails
-  const fetchNotificationsDirectly = async () => {
-    try {
-      setLoading(true);
+  // Fetch current user ID and Firebase ID
+  useEffect(() => {
+    const fetchUserIds = async () => {
+      try {
+        if (userId) {
+          setCurrentUserId(userId);
+          await fetchUserName(userId);
 
-      if (!currentUserId) {
-        setErrorMessage("No user ID available for fetching notifications");
+          // Get corresponding Firebase ID
+          const fetchedFirebaseId = await getFirebaseIdFromUserId(userId);
+          if (fetchedFirebaseId) {
+            setFirebaseUserId(fetchedFirebaseId);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching user IDs:", error);
+        setErrorMessage("Couldn't load user data");
+      } finally {
         setLoading(false);
-        return;
       }
+    };
 
-      // IMPORTANT: Always convert ID to string before Firebase query
-      const userIdString = currentUserId.toString();
-      console.log("Directly fetching for userId (string):", userIdString);
+    fetchUserIds();
+  }, [userId]);
 
+  // Fetch user's name from API
+  const fetchUserName = async (userId) => {
+    if (!userId) return;
+
+    try {
+      const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
+      if (response) {
+        const { firstName, lastName } = response;
+        setCurrentUserName(`${firstName} ${lastName}`);
+
+        // Also add to usernames cache
+        setUsernames((prev) => ({
+          ...prev,
+          [userId]: `${firstName} ${lastName}`,
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching user name:", error);
+    }
+  };
+
+  // Fetch notifications using app ID
+  const fetchNotificationsForAppId = async () => {
+    if (!currentUserId) return [];
+
+    try {
       const q = query(
         collection(FIREBASE_DB, "notifications"),
-        where("receiverId", "==", userIdString),
+        where("receiverId", "==", currentUserId.toString()),
         orderBy("createdAt", "desc")
       );
 
@@ -91,424 +119,345 @@ const NotificationPage = ({
         });
       });
 
-      console.log(
-        "Directly fetched notifications:",
-        fetchedNotifications.length
-      );
-
-      // Debug each notification
-      fetchedNotifications.forEach((notification) => {
-        console.log(
-          `Retrieved notification: ID=${notification.id}, Title=${notification.title}`
-        );
-        if (notification.data?.action) {
-          console.log(`  Type: ${notification.data.action}`);
-        } else {
-          // Important: Check structure of notification for debugging
-          console.log(
-            `  No action type. Full data:`,
-            JSON.stringify(notification)
-          );
-        }
-      });
-
-      setNotifications(fetchedNotifications);
+      return fetchedNotifications;
     } catch (error) {
-      console.error("Error directly fetching notifications:", error);
-      setErrorMessage("Error fetching notifications: " + error.message);
-    } finally {
-      setLoading(false);
+      console.error("Error fetching notifications for app ID:", error);
+      return [];
     }
   };
 
-  // Fetch current user ID from Firebase or use the one passed as prop
-  useEffect(() => {
-    const fetchCurrentUserId = async () => {
-      try {
-        setErrorMessage(null);
-
-        // If userId was provided as prop, use it directly
-        if (userId) {
-          console.log("Using userId from props:", userId);
-          setCurrentUserId(userId);
-          await fetchUserName(userId);
-          setLoading(false);
-          return;
-        }
-
-        // Otherwise fetch from Firebase
-        console.log("Fetching userId from Firebase");
-        const fetchedUserId = await getUserDataFromFirebase();
-        if (fetchedUserId) {
-          console.log("Fetched userId:", fetchedUserId);
-          setCurrentUserId(fetchedUserId);
-          await fetchUserName(fetchedUserId);
-        } else {
-          console.log("No userId found");
-          setErrorMessage(
-            "Could not retrieve user ID. Please try logging in again."
-          );
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        setErrorMessage("Error fetching user data: " + error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCurrentUserId();
-  }, [userId]); // Depend on userId to re-run if it changes
-
-  // Fetch user's name from API
-  const fetchUserName = async (userId) => {
-    if (!userId) {
-      console.log("No userId to fetch name for");
-      return;
-    }
+  // Fetch notifications using Firebase ID
+  const fetchNotificationsForFirebaseId = async () => {
+    if (!firebaseUserId) return [];
 
     try {
-      console.log("Fetching username for userId:", userId);
-      const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
-      if (response) {
-        const { firstName, lastName } = response;
-        const fullName = `${firstName} ${lastName}`;
-        setCurrentUserName(fullName);
-        console.log("User name fetched:", fullName);
+      const q = query(
+        collection(FIREBASE_DB, "notifications"),
+        where("receiverId", "==", firebaseUserId),
+        orderBy("createdAt", "desc")
+      );
 
-        // Also add to usernames cache
-        setUsernames((prev) => ({
-          ...prev,
-          [userId]: fullName,
-        }));
-      }
+      const querySnapshot = await getDocs(q);
+      const fetchedNotifications = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        fetchedNotifications.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+        });
+      });
+
+      return fetchedNotifications;
     } catch (error) {
-      console.error("Error fetching user name:", error);
+      console.error("Error fetching notifications for Firebase ID:", error);
+      return [];
+    }
+  };
+
+  // Fetch all notifications from both sources
+  const fetchAllNotifications = async () => {
+    setLoading(true);
+
+    try {
+      // Fetch from both sources
+      const [appNotifications, fbNotifications] = await Promise.all([
+        fetchNotificationsForAppId(),
+        fetchNotificationsForFirebaseId(),
+      ]);
+
+      // Merge notifications, handling duplicates
+      const notificationMap = new Map();
+
+      // Process all notifications
+      [...appNotifications, ...fbNotifications].forEach((notification) => {
+        notificationMap.set(notification.id, notification);
+      });
+
+      // Convert map to array and sort by date
+      const mergedNotifications = Array.from(notificationMap.values()).sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+
+      setNotifications(mergedNotifications);
+
+      // Fetch sender names
+      mergedNotifications.forEach((notification) => {
+        if (notification.senderId) {
+          fetchSenderUsername(notification.senderId);
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching all notifications:", error);
+      setErrorMessage("Couldn't load notifications");
+    } finally {
+      setLoading(false);
     }
   };
 
   // Fetch sender username
   const fetchSenderUsername = async (senderId) => {
-    if (!senderId || usernames[senderId]) return;
+    // Prevent duplicate fetches
+    if (
+      !senderId ||
+      fetchedUserIds.current.has(senderId) ||
+      usernames[senderId]
+    )
+      return;
+
+    // Mark as being fetched
+    fetchedUserIds.current.add(senderId);
 
     try {
       const response = await ApiHandler.get(`/UserDetails/userId/${senderId}`);
       if (response) {
         const { firstName, lastName } = response;
-        const fullName = `${firstName} ${lastName}`;
         setUsernames((prev) => ({
           ...prev,
-          [senderId]: fullName,
+          [senderId]: `${firstName} ${lastName}`,
         }));
       }
     } catch (error) {
-      console.error("Error fetching sender info:", error);
-      // Fallback - try Firebase directly
-      try {
-        const userDoc = await getDoc(doc(FIREBASE_DB, "users", senderId));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setUsernames((prev) => ({
-            ...prev,
-            [senderId]: userData.firstName || userData.email || "User",
-          }));
-        }
-      } catch (fbError) {
-        console.error("Error fetching user from Firebase:", fbError);
-      }
+      // Add fallback name when API fails
+      setUsernames((prev) => ({
+        ...prev,
+        [senderId]: `User ${senderId.substring(0, 4)}`,
+      }));
     }
   };
 
-  // Detect if a notification is a chat notification
-  const isChatNotification = (notification) => {
-    // Standard way - checking data.action
-    if (notification?.data?.action === "view_chat") {
-      return true;
-    }
-
-    // Fallback - look for chatId in either data or directly on notification
-    if (notification?.data?.chatId || notification?.chatId) {
-      return true;
-    }
-
-    // Additional check - look for chat-related content in title or body
-    if (
-      notification?.title?.toLowerCase().includes("chat") ||
-      notification?.title?.toLowerCase().includes("message") ||
-      notification?.body?.toLowerCase().includes("chat") ||
-      notification?.body?.toLowerCase().includes("message")
-    ) {
-      return true;
-    }
-
-    return false;
-  };
-
-  // Detect if a notification is an agreement notification
-  const isAgreementNotification = (notification) => {
-    // Standard way - checking data.action
-    if (notification?.data?.action === "view_agreement") {
-      return true;
-    }
-
-    // Fallback - look for agreementId in either data or directly on notification
-    if (notification?.data?.agreementId || notification?.agreementId) {
-      return true;
-    }
-
-    // Additional check - look for agreement-related content in title or body
-    if (
-      notification?.title?.toLowerCase().includes("agreement") ||
-      notification?.body?.toLowerCase().includes("agreement")
-    ) {
-      return true;
-    }
-
-    return false;
-  };
-
-  // Listen for notifications from Firebase - FIXED VERSION
+  // Listen for notifications from Firebase for both IDs
   useEffect(() => {
-    if (!currentUserId) {
-      console.log("No currentUserId, not setting up notification listener");
+    if (!currentUserId && !firebaseUserId) {
       return () => {};
     }
 
-    console.log("Setting up notification listener for userId:", currentUserId);
-    setLoading(true);
-    let unsubscribeFunc = null;
+    let unsubscribeFuncs = [];
 
-    try {
-      // CRUCIAL FIX: Convert to string before Firebase query
-      const userIdString = currentUserId.toString();
-      console.log("Converted userId to string:", userIdString);
-
-      unsubscribeFunc = listenForUserNotifications((fetchedNotifications) => {
-        console.log("Received notifications:", fetchedNotifications.length);
-
-        // Debug notifications received
-        fetchedNotifications.forEach((notification) => {
-          console.log(
-            `Notification from listener: ID=${notification.id}, Title=${notification.title}`
-          );
-          if (notification.data?.action) {
-            console.log(`  Type: ${notification.data.action}`);
-          } else {
-            // Important: Check structure of notification for debugging
-            console.log(
-              `  No action type. Full data:`,
-              JSON.stringify(notification)
-            );
-          }
-
-          // Check if chat notification using our enhanced detection
-          const isChat = isChatNotification(notification);
-          const isAgreement = isAgreementNotification(notification);
-          console.log(`  isChat: ${isChat}, isAgreement: ${isAgreement}`);
-        });
-
-        setNotifications(fetchedNotifications);
-        setLoading(false);
-
-        // Load sender names for each notification
-        fetchedNotifications.forEach((notification) => {
-          if (notification.senderId) {
-            fetchSenderUsername(notification.senderId);
-          }
-        });
-      }, userIdString); // THIS IS THE KEY FIX - passing userIdString as second parameter
-    } catch (error) {
-      console.error("Error setting up notification listener:", error);
-      setLoading(false);
-      setErrorMessage(
-        "Failed to load notifications. Trying direct fetch method..."
-      );
-
-      // Try direct fetch as fallback
-      fetchNotificationsDirectly();
-
-      unsubscribeFunc = () => {};
-    }
-
-    // Clean up listener when component unmounts
-    return () => {
-      console.log("Cleaning up notification listener");
+    const setupListener = async () => {
       try {
-        if (unsubscribeFunc && typeof unsubscribeFunc === "function") {
-          unsubscribeFunc();
+        // Initial fetch of all notifications
+        await fetchAllNotifications();
+
+        // Set up listeners for both IDs
+        if (firebaseUserId) {
+          try {
+            const unsubscribeFb = listenForUserNotifications(
+              () => fetchAllNotifications(),
+              firebaseUserId
+            );
+            unsubscribeFuncs.push(unsubscribeFb);
+          } catch (error) {
+            console.error("Error setting up Firebase ID listener:", error);
+          }
+        }
+
+        if (currentUserId) {
+          try {
+            const unsubscribeApp = listenForUserNotifications(
+              () => fetchAllNotifications(),
+              currentUserId.toString()
+            );
+            unsubscribeFuncs.push(unsubscribeApp);
+          } catch (error) {
+            console.error("Error setting up App ID listener:", error);
+          }
         }
       } catch (error) {
-        console.error("Error unsubscribing from notifications:", error);
+        console.error("Error setting up notification listeners:", error);
+        setErrorMessage("Failed to set up notification listeners");
+        setLoading(false);
       }
     };
-  }, [currentUserId]);
 
-  // Format timestamp
-  const formatTime = (timestamp) => {
+    setupListener();
+
+    // Clean up listeners when component unmounts
+    return () => {
+      unsubscribeFuncs.forEach((unsubscribe) => {
+        try {
+          if (typeof unsubscribe === "function") {
+            unsubscribe();
+          }
+        } catch (error) {
+          console.error("Error unsubscribing from notifications:", error);
+        }
+      });
+    };
+  }, [currentUserId, firebaseUserId]);
+
+  // Get notification type icon and color
+  const getNotificationTypeInfo = (notification) => {
+    if (!notification.data || !notification.data.action) {
+      return {
+        icon: <FiBell size={14} />,
+        color: "bg-gray-400",
+        textColor: "text-gray-400",
+        lightBg: "bg-gray-50",
+        text: "Notification",
+      };
+    }
+
+    switch (notification.data.action) {
+      case "view_agreement":
+        return {
+          icon: <FiFile size={14} />,
+          color: "bg-emerald-500",
+          textColor: "text-emerald-500",
+          lightBg: "bg-emerald-50",
+          text: "Agreement",
+        };
+      case "booking_request":
+        return {
+          icon: <FiCalendar size={14} />,
+          color: "bg-blue-500",
+          textColor: "text-blue-500",
+          lightBg: "bg-blue-50",
+          text: "Booking",
+        };
+      case "property_update":
+        return {
+          icon: <FiHome size={14} />,
+          color: "bg-purple-500",
+          textColor: "text-purple-500",
+          lightBg: "bg-purple-50",
+          text: "Property",
+        };
+      case "payment_received":
+        return {
+          icon: <FiDollarSign size={14} />,
+          color: "bg-amber-500",
+          textColor: "text-amber-500",
+          lightBg: "bg-amber-50",
+          text: "Payment",
+        };
+      case "view_chat":
+        return {
+          icon: <FiMessageCircle size={14} />,
+          color: "bg-indigo-500",
+          textColor: "text-indigo-500",
+          lightBg: "bg-indigo-50",
+          text: "Message",
+        };
+      case "system_update":
+        return {
+          icon: <FiInfo size={14} />,
+          color: "bg-sky-500",
+          textColor: "text-sky-500",
+          lightBg: "bg-sky-50",
+          text: "System",
+        };
+      case "package_delivery":
+        return {
+          icon: <FiPackage size={14} />,
+          color: "bg-rose-500",
+          textColor: "text-rose-500",
+          lightBg: "bg-rose-50",
+          text: "Delivery",
+        };
+      default:
+        return {
+          icon: <FiBell size={14} />,
+          color: "bg-gray-500",
+          textColor: "text-gray-500",
+          lightBg: "bg-gray-50",
+          text: notification.data.action || "Notification",
+        };
+    }
+  };
+
+  // Format relative time
+  const formatTimeAgo = (timestamp) => {
     if (!timestamp) return "";
+
+    const now = new Date();
     const date = new Date(timestamp);
-    return date.toLocaleString();
-  };
+    const seconds = Math.floor((now - date) / 1000);
 
-  // Helper function to get notification icon based on type
-  const getNotificationIcon = (notification) => {
-    if (isChatNotification(notification)) {
-      return <FiMessageCircle className="text-blue-500 text-lg mr-2" />;
-    } else if (isAgreementNotification(notification)) {
-      return <FiFileText className="text-green-500 text-lg mr-2" />;
-    } else {
-      return <FiBell className="text-gray-500 text-lg mr-2" />;
-    }
-  };
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
 
-  // Helper function to get notification style based on type
-  const getNotificationStyle = (notification) => {
-    if (!notification.read) {
-      return "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800";
-    }
-
-    if (isChatNotification(notification)) {
-      return "bg-white dark:bg-gray-800 border-blue-100 dark:border-blue-900 border-l-blue-300 dark:border-l-blue-700";
-    } else if (isAgreementNotification(notification)) {
-      return "bg-white dark:bg-gray-800 border-green-100 dark:border-green-900 border-l-green-300 dark:border-l-green-700";
-    } else {
-      return "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700";
-    }
+    return `${date.getMonth() + 1}/${date.getDate()}/${date
+      .getFullYear()
+      .toString()
+      .substr(-2)}`;
   };
 
   // Handle notification click
-  const handleNotificationClick = (notification) => {
-    console.log("Notification clicked:", notification);
-
-    // Update UI immediately first, regardless of backend success
-    setNotifications((prevNotifications) =>
-      prevNotifications.map((n) =>
-        n.id === notification.id ? { ...n, read: true } : n
-      )
+  const handleNotificationPress = (notification) => {
+    // Update UI immediately
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
     );
 
-    // Mark as read in background
+    // Mark as read in database
     markNotificationAsRead(notification.id).catch((error) => {
       console.error("Error marking notification as read:", error);
     });
 
-    // Get chat or agreement IDs from either location
-    const chatId = notification?.data?.chatId || notification?.chatId;
-    const agreementId =
-      notification?.data?.agreementId || notification?.agreementId;
+    // Handle navigation based on notification type
+    if (notification.data) {
+      const navigate = navigateFunction || (() => {});
 
-    // Handle specific actions if needed
-    if (isAgreementNotification(notification) && agreementId) {
-      console.log("Navigate to agreement:", agreementId);
-      navigate(`/landlord/booking/${agreementId}`);
-    } else if (isChatNotification(notification) && chatId) {
-      console.log("Navigate to chat:", chatId);
-      // Get sender and receiver info from either location
-      const senderId = notification?.data?.senderId || notification?.senderId;
-      const receiverId =
-        notification?.data?.receiverId || notification?.receiverId;
-      const actualReceiverId =
-        notification?.data?.actualReceiverId || notification?.actualReceiverId;
-
-      navigate(`/landlord/chat/${chatId}`, {
-        state: {
-          senderId,
-          receiverId,
-          actualReceiverId,
-        },
-      });
-    }
-  };
-
-  // Mark all as read
-  const handleMarkAllAsRead = async () => {
-    try {
-      await markAllNotificationsAsRead();
-
-      // Update UI immediately
-      setNotifications((prevNotifications) =>
-        prevNotifications.map((n) => ({ ...n, read: true }))
-      );
-    } catch (error) {
-      console.error("Error marking all as read:", error);
-    }
-  };
-
-  // Refresh data
-  const handleRefresh = async () => {
-    setRefreshing(true);
-
-    try {
-      // Refetch current user data
-      if (currentUserId) {
-        await fetchUserName(currentUserId);
-        await fetchNotificationsDirectly();
+      switch (notification.data.action) {
+        case "view_agreement":
+          navigate(`/landlord/booking/${notification.data.agreementId}`);
+          break;
+        case "booking_request":
+          navigate(`/landlord/booking/${notification.data.bookingId}`);
+          break;
+        case "property_update":
+          navigate(`/landlord/property/${notification.data.propertyId}`);
+          break;
+        case "payment_received":
+          navigate(`/landlord/payment/${notification.data.paymentId}`);
+          break;
+        case "view_chat":
+          navigate(`/landlord/chat/${notification.data.chatId}`);
+          break;
+        default:
+          if (notification.data.route) {
+            navigate(notification.data.route);
+          }
       }
-    } catch (error) {
-      console.error("Error refreshing data:", error);
-    } finally {
-      setTimeout(() => {
-        setRefreshing(false);
-      }, 1000);
     }
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full">
-      {/* Header */}
-      <div className="border-b dark:border-gray-700 pb-4 mb-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
-            Notifications
-            {unreadCount > 0 && (
-              <span className="ml-2 text-xs bg-blue-500 text-white rounded-full px-2 py-0.5">
-                {unreadCount}
-              </span>
-            )}
-          </h1>
-
-          <div className="flex space-x-2">
-            <button
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <FiRefreshCw
-                className={`${refreshing ? "animate-spin" : ""}`}
-                size={16}
-              />
-            </button>
-
-            {notifications.length > 0 && unreadCount > 0 && (
-              <button
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                onClick={handleMarkAllAsRead}
-              >
-                Mark all read
-              </button>
-            )}
-          </div>
+    <div className="w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm">
+      {/* Header with unread count */}
+      {unreadCount > 0 && (
+        <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 mb-2 rounded-md">
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300 flex items-center">
+            <FiBell size={14} className="mr-2 animate-pulse" />
+            {unreadCount} new notification{unreadCount !== 1 ? "s" : ""}
+          </span>
         </div>
-
-        {currentUserName && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            For {currentUserName}
-          </p>
-        )}
-      </div>
+      )}
 
       {/* Error Message */}
       {errorMessage && (
-        <div className="mb-3 p-2 bg-red-100 border border-red-300 text-red-700 rounded text-sm">
-          <p>{errorMessage}</p>
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-md mb-3">
+          <p className="flex items-center">
+            <FiInfo size={14} className="mr-2" /> {errorMessage}
+          </p>
         </div>
       )}
 
       {/* Loading State */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p className="text-gray-500 dark:text-gray-400">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="w-10 h-10 relative">
+            <div className="w-10 h-10 rounded-full border-3 border-blue-100 dark:border-blue-900/30"></div>
+            <div className="w-10 h-10 rounded-full border-t-3 border-blue-500 animate-spin absolute top-0 left-0"></div>
+          </div>
+          <p className="mt-3 text-gray-500 dark:text-gray-400 text-sm">
             Loading notifications...
           </p>
         </div>
@@ -516,82 +465,88 @@ const NotificationPage = ({
         <>
           {/* Notifications List */}
           {notifications.length > 0 ? (
-            <div className="space-y-4">
+            <div className="max-h-[40vh] overflow-y-auto px-2 py-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
               {notifications.map((notification) => {
-                // Debug log
-                const isChat = isChatNotification(notification);
-                const isAgreement = isAgreementNotification(notification);
-                console.log(
-                  `Rendering notification: ${notification.id}, isChat: ${isChat}, isAgreement: ${isAgreement}`
-                );
+                const { icon, color, textColor, lightBg, text } =
+                  getNotificationTypeInfo(notification);
 
                 return (
                   <div
                     key={notification.id}
-                    className={`p-4 rounded-lg border ${getNotificationStyle(
-                      notification
-                    )} hover:shadow-md transition cursor-pointer relative`}
-                    onClick={() => handleNotificationClick(notification)}
+                    onClick={() => handleNotificationPress(notification)}
+                    className={`p-3 rounded-md border ${
+                      notification.read
+                        ? "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600"
+                        : `${lightBg} dark:bg-blue-900/10 border-blue-100 dark:border-blue-800 hover:border-blue-200 dark:hover:border-blue-700`
+                    } hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 cursor-pointer relative group`}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center">
-                        {getNotificationIcon(notification)}
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
-                          {notification.title}
-                        </h3>
+                    {/* Side color indicator */}
+                    <div
+                      className={`absolute left-0 top-0 bottom-0 w-1 ${color} rounded-tl-md rounded-bl-md`}
+                    ></div>
+
+                    <div className="pl-2">
+                      {/* Header with title and time */}
+                      <div className="flex justify-between items-center mb-1">
+                        <div className="flex items-center space-x-2">
+                          <div
+                            className={`rounded-full p-1 ${lightBg} dark:bg-opacity-20`}
+                          >
+                            <span className={`${textColor}`}>{icon}</span>
+                          </div>
+                          <h3 className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-1">
+                            {notification.title}
+                          </h3>
+                        </div>
+
+                        <div className="flex items-center space-x-1">
+                          {!notification.read && (
+                            <FiCircle size={6} className="text-blue-500" />
+                          )}
+                          <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center">
+                            <FiClock size={10} className="mr-1" />
+                            {formatTimeAgo(notification.createdAt)}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatTime(notification.createdAt)}
-                      </span>
-                    </div>
 
-                    <p className="text-gray-600 dark:text-gray-300 mt-2 ml-7">
-                      {notification.body}
-                    </p>
-
-                    {notification.senderId && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 italic mt-2 ml-7">
-                        From:{" "}
-                        {usernames[notification.senderId] || "Loading user..."}
+                      {/* Body */}
+                      <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 ml-8">
+                        {notification.body}
                       </p>
-                    )}
 
-                    {/* Action type badge */}
-                    <div className="mt-3 ml-7">
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          isChat
-                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100"
-                            : isAgreement
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
-                            : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
-                        }`}
-                      >
-                        {isAgreement
-                          ? "Agreement"
-                          : isChat
-                          ? "Chat"
-                          : "Notification"}
-                      </span>
+                      {/* Footer */}
+                      <div className="flex justify-between items-center mt-2 ml-8">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${lightBg} dark:bg-opacity-20 ${textColor} font-medium`}
+                        >
+                          {text}
+                        </span>
+
+                        {notification.senderId &&
+                          usernames[notification.senderId] && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {/* From: {usernames[notification.senderId]} */}
+                            </span>
+                          )}
+                      </div>
                     </div>
-
-                    {!notification.read && (
-                      <div className="w-3 h-3 bg-blue-500 rounded-full absolute top-4 right-4"></div>
-                    )}
                   </div>
                 );
               })}
             </div>
           ) : (
-            // Empty State
-            <div className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
+            // Empty state
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
               <FiBell
-                size={60}
-                className="mb-4 text-gray-300 dark:text-gray-600"
+                size={24}
+                className="mb-3 text-gray-300 dark:text-gray-600"
               />
-              <p className="text-xl">No notifications yet</p>
-              <p className="text-sm mt-2">
-                When you receive notifications, they will appear here
+              <p className="text-gray-600 dark:text-gray-300">
+                No notifications yet
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                You'll see your notifications here when they arrive
               </p>
             </div>
           )}

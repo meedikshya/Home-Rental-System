@@ -114,3 +114,28 @@ export const getUserDataFromFirebaseId = async (firebaseId) => {
     return null; // Return null in case of an error
   }
 };
+
+// NEW FUNCTION: Get Firebase ID from app user ID
+export const getFirebaseIdFromUserId = async (userId) => {
+  try {
+    console.log("Fetching Firebase ID for user ID:", userId);
+
+    // Fetch Firebase ID from the database using the provided app user ID
+    // This is the reverse lookup operation compared to getUserDataFromFirebaseId
+    const response = await ApiHandler.get(`/Users/firebaseByUserId/${userId}`);
+
+    console.log("API Response for Firebase lookup:", response);
+
+    if (response) {
+      const firebaseId = response; // Treat response as a plain string
+      console.log(`Firebase ID for user ID (${userId}):`, firebaseId);
+      return firebaseId;
+    } else {
+      console.log("No Firebase ID returned from the API.");
+      return null;
+    }
+  } catch (error) {
+    console.error("Error fetching Firebase ID:", error);
+    return null;
+  }
+};

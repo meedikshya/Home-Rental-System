@@ -328,6 +328,44 @@ const getAssociatedUsers = async (currentUserId) => {
   }
 };
 
+const sendMessageWithNotification = async (
+  chatId,
+  messageData,
+  senderFirebaseId,
+  receiverId
+) => {
+  try {
+    // First send the message
+    const messageId = await sendMessage(chatId, messageData, senderFirebaseId);
+
+    // If message sent successfully and we have the receiverId, create notification
+    if (messageId && receiverId) {
+      // Get message text in a consistent way
+      const messageText =
+        typeof messageData === "string"
+          ? messageData
+          : messageData.text || "New message";
+
+      // Import directly here to avoid circular dependencies
+      const { createChatNotification } = require("./Firebase-notification.js");
+
+      await createChatNotification(
+        receiverId,
+        senderFirebaseId,
+        messageText.length > 50
+          ? messageText.substring(0, 47) + "..."
+          : messageText,
+        chatId
+      );
+    }
+
+    return messageId;
+  } catch (error) {
+    console.error("Error in sendMessageWithNotification:", error);
+    throw error;
+  }
+};
+
 export {
   FIREBASE_APP,
   FIREBASE_AUTH,
@@ -337,4 +375,5 @@ export {
   messaging,
   getAssociatedUsers,
   findMessagesBetweenUsers,
+  sendMessageWithNotification,
 };
