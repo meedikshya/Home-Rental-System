@@ -22,12 +22,14 @@ import {
   FaMoneyBillWave,
   FaFileDownload,
   FaChevronRight,
+  FaHome,
 } from "react-icons/fa";
 import Agreement from "./Agreement.js";
 import { sendNotificationToUser } from "../../services/Firebase-notification.js";
 import { downloadAgreement } from "./DownloadAgreement.js";
+import PaginationControls from "../UI/PaginationControls.js";
 
-const BookingList = () => {
+const AgreementList = () => {
   const [landlordId, setLandlordId] = useState(null);
   const [agreements, setAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +45,13 @@ const BookingList = () => {
   const [propertyDetails, setPropertyDetails] = useState({});
 
   // Filter state
-  const [filterStatus, setFilterStatus] = useState("All");
+  const [activeTab, setActiveTab] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
   const [isFilterVisible, setIsFilterVisible] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(5);
 
   // Get user's landlord ID
   useEffect(() => {
@@ -114,6 +120,11 @@ const BookingList = () => {
       fetchAgreements();
     }
   }, [landlordId]);
+
+  // Reset current page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchTerm]);
 
   // Fetch property details for agreements
   const fetchPropertyDetails = async (bookingIds) => {
@@ -194,10 +205,6 @@ const BookingList = () => {
             namesMap[renterId] = `${response.firstName} ${
               response.lastName || ""
             }`.trim();
-            console.log(
-              `Fetched name for renter ${renterId}:`,
-              namesMap[renterId]
-            );
           } else {
             namesMap[renterId] = "Unknown User";
           }
@@ -221,13 +228,11 @@ const BookingList = () => {
     setIsModalOpen(true);
   };
 
-  // Handle PDF download - updated to use the utility function
+  // Handle PDF download
   const handlePdfDownload = async (agreement) => {
     try {
-      // Set downloading state
       setDownloadingIds((prev) => [...prev, agreement.agreementId]);
 
-      // Call the download utility function
       await downloadAgreement(
         agreement,
         propertyDetails,
@@ -236,13 +241,10 @@ const BookingList = () => {
         (id) => setDownloadingIds((prev) => [...prev, id]),
         (id) => setDownloadingIds((prev) => prev.filter((item) => item !== id))
       );
-
-      // No success toast needed
     } catch (error) {
       console.error("Error downloading agreement:", error);
       toast.error("Failed to download agreement. Please try again.");
     } finally {
-      // Clear downloading state
       setDownloadingIds((prev) =>
         prev.filter((id) => id !== agreement.agreementId)
       );
@@ -278,15 +280,11 @@ const BookingList = () => {
 
       // Update agreement status
       const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
-      const response = await ApiHandler.put(
-        `/Agreements/${agreementId}`,
-        updatePayload,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await ApiHandler.put(`/Agreements/${agreementId}`, updatePayload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       // Update local state
       setAgreements((prev) =>
@@ -299,11 +297,9 @@ const BookingList = () => {
 
       // SEND NOTIFICATION
       try {
-        // Get property details
         const property = propertyDetails[agreementToUpdate.bookingId] || {};
         const propertyAddress = property.address || "your requested property";
 
-        // Get Firebase ID
         const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
         const renterResponse = await ApiHandler.get(
           `/Users/firebaseByUserId/${agreementToUpdate.renterId}`,
@@ -321,11 +317,9 @@ const BookingList = () => {
           return;
         }
 
-        // Notification content
         const notificationTitle = "Agreement Approved";
         const notificationBody = `Your lease agreement for ${propertyAddress} has been approved.`;
 
-        // Simple additionalData structure
         const additionalData = {
           propertyId: property.propertyId,
           bookingId: agreementToUpdate.bookingId,
@@ -335,17 +329,11 @@ const BookingList = () => {
           timestamp: new Date().toISOString(),
         };
 
-        // Direct notification call
         await sendNotificationToUser(
           renterFirebaseId,
           notificationTitle,
           notificationBody,
           additionalData
-        );
-
-        console.log(
-          "Agreement approval notification sent to:",
-          renterFirebaseId
         );
       } catch (notificationError) {
         console.error("Error sending notification:", notificationError);
@@ -395,15 +383,11 @@ const BookingList = () => {
 
       // Update agreement status
       const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
-      const response = await ApiHandler.put(
-        `/Agreements/${agreementId}`,
-        updatePayload,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await ApiHandler.put(`/Agreements/${agreementId}`, updatePayload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       // Update local state
       setAgreements((prev) =>
@@ -416,11 +400,9 @@ const BookingList = () => {
 
       // SEND NOTIFICATION
       try {
-        // Get property details
         const property = propertyDetails[agreementToUpdate.bookingId] || {};
         const propertyAddress = property.address || "your requested property";
 
-        // Get Firebase ID
         const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
         const renterResponse = await ApiHandler.get(
           `/Users/firebaseByUserId/${agreementToUpdate.renterId}`,
@@ -438,11 +420,9 @@ const BookingList = () => {
           return;
         }
 
-        // Notification content
         const notificationTitle = "Agreement Rejected";
         const notificationBody = `Your lease agreement for ${propertyAddress} has been rejected by the landlord.`;
 
-        // Simple additionalData structure
         const additionalData = {
           propertyId: property.propertyId,
           bookingId: agreementToUpdate.bookingId,
@@ -452,17 +432,11 @@ const BookingList = () => {
           timestamp: new Date().toISOString(),
         };
 
-        // Direct notification call
         await sendNotificationToUser(
           renterFirebaseId,
           notificationTitle,
           notificationBody,
           additionalData
-        );
-
-        console.log(
-          "Agreement rejection notification sent to:",
-          renterFirebaseId
         );
       } catch (notificationError) {
         console.error("Error sending notification:", notificationError);
@@ -509,15 +483,14 @@ const BookingList = () => {
 
   // Reset filters
   const resetFilters = () => {
-    setFilterStatus("All");
+    setActiveTab("All");
     setSearchTerm("");
   };
 
-  // Filter agreements based on selected status and search term
+  // Filter agreements based on active tab and search term
   const filteredAgreements = agreements.filter((agreement) => {
     // Status filter
-    const statusMatch =
-      filterStatus === "All" || agreement.status === filterStatus;
+    const statusMatch = activeTab === "All" || agreement.status === activeTab;
 
     // Search filter - check property title, renter name, or agreement ID
     const propertyTitle = getPropertyName(agreement.bookingId).toLowerCase();
@@ -533,6 +506,23 @@ const BookingList = () => {
 
     return statusMatch && searchMatch;
   });
+
+  // Get counts by status
+  const statusCounts = {
+    All: agreements.length,
+    Pending: agreements.filter((a) => a.status === "Pending").length,
+    Approved: agreements.filter((a) => a.status === "Approved").length,
+    Rejected: agreements.filter((a) => a.status === "Rejected").length,
+  };
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAgreements.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredAgreements.slice(
+    indexOfFirstItem,
+    indexOfLastItem
+  );
 
   // Get status badge styling
   const getStatusBadge = (status) => {
@@ -564,10 +554,32 @@ const BookingList = () => {
     }
   };
 
+  // Get tab styles
+  const getTabStyle = (tabName) => {
+    const isActive = activeTab === tabName;
+    let baseStyle =
+      "px-4 py-2 font-medium text-sm rounded-md flex items-center justify-center";
+
+    if (isActive) {
+      switch (tabName) {
+        case "Pending":
+          return `${baseStyle} bg-yellow-100 text-yellow-800 border border-yellow-200`;
+        case "Approved":
+          return `${baseStyle} bg-green-100 text-green-800 border border-green-200`;
+        case "Rejected":
+          return `${baseStyle} bg-red-100 text-red-800 border border-red-200`;
+        default:
+          return `${baseStyle} bg-blue-100 text-blue-800 border border-blue-200`;
+      }
+    }
+
+    return `${baseStyle} bg-white text-gray-600 border border-gray-200 hover:bg-gray-50`;
+  };
+
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] bg-white rounded-lg shadow-sm">
-        <FaSpinner className="animate-spin text-[#20319D] text-4xl mb-4" />
+      <div className="flex flex-col items-center justify-center min-h-[300px] bg-white rounded-lg shadow-sm">
+        <FaSpinner className="animate-spin text-[#20319D] text-3xl mb-3" />
         <p className="text-gray-600">Loading agreements...</p>
       </div>
     );
@@ -575,14 +587,14 @@ const BookingList = () => {
 
   if (error) {
     return (
-      <div className="bg-red-50 p-6 rounded-lg border border-red-200 text-red-700 my-4 shadow-sm">
-        <p className="flex items-center text-lg font-medium mb-2">
+      <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-red-700 my-4 shadow-sm">
+        <p className="flex items-center text-base font-medium mb-2">
           <FaInfoCircle className="mr-2" /> Error
         </p>
-        <p className="mb-4">{error}</p>
+        <p className="mb-3">{error}</p>
         <button
           onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors shadow-sm flex items-center"
+          className="px-3 py-1.5 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors shadow-sm flex items-center"
         >
           <FaSpinner className="mr-2" /> Try Again
         </button>
@@ -592,12 +604,12 @@ const BookingList = () => {
 
   if (!agreements || agreements.length === 0) {
     return (
-      <div className="text-center p-8 bg-white rounded-lg border border-gray-200 shadow-sm">
-        <FaFileContract className="mx-auto text-4xl text-gray-400 mb-3" />
-        <h3 className="text-xl font-medium text-gray-700 mb-2">
+      <div className="text-center p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+        <FaFileContract className="mx-auto text-3xl text-gray-400 mb-2" />
+        <h3 className="text-lg font-medium text-gray-700 mb-1.5">
           No Lease Agreements
         </h3>
-        <p className="text-gray-500">
+        <p className="text-gray-500 text-sm">
           You don't have any lease agreement requests at the moment.
         </p>
       </div>
@@ -605,330 +617,289 @@ const BookingList = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header - Enhanced with better visual styling */}
-      <div className="mb-6 bg-gradient-to-r from-[#20319D] to-[#3448c5] text-white p-6 rounded-lg shadow-lg">
+    <div className="space-y-4">
+      {/* Header with banner */}
+      <div className="bg-gradient-to-r from-[#20319D] to-[#3448c5] text-white p-5 rounded-lg shadow-md">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center">
-          <div className="mb-4 md:mb-0">
-            <h1 className="text-2xl font-bold mb-2 flex items-center">
-              <FaFileContract className="mr-3 text-blue-200" /> Lease Agreement
+          <div className="mb-3 md:mb-0">
+            <h1 className="text-xl font-bold mb-1 flex items-center">
+              <FaFileContract className="mr-2 text-blue-200" /> Lease Agreement
               Requests
             </h1>
-            <p className="text-sm text-blue-100 opacity-90">
+            <p className="text-xs text-blue-100 opacity-90">
               Manage and review lease agreements for your properties
             </p>
           </div>
 
-          <div>
-            {/* Filter toggle button - Enhanced */}
-            <button
-              onClick={() => setIsFilterVisible(!isFilterVisible)}
-              className="flex items-center justify-center px-4 py-2 bg-white text-[#20319D] rounded-md hover:bg-blue-50 transition-colors font-medium shadow-sm"
-            >
-              <FaFilter className="mr-2" />
-              {isFilterVisible ? "Hide Filters" : "Show Filters"}
-            </button>
-          </div>
-        </div>
-
-        {/* Filter panel - Enhanced with frosted glass effect */}
-        <div
-          className={`mt-6 overflow-hidden transition-all duration-300 ${
-            isFilterVisible ? "max-h-[200px] opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
-          <div className="bg-white/15 backdrop-blur-sm rounded-lg p-5 border border-white/20 shadow-lg">
-            <div className="flex flex-col md:flex-row gap-4 items-end">
-              {/* Search input - Enhanced */}
-              <div className="flex-grow">
-                <label className="block text-sm font-medium mb-1 text-blue-100">
-                  Search Agreements
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search by property, renter, or agreement ID"
-                    value={searchTerm}
-                    onChange={handleSearch}
-                    className="pl-10 pr-4 py-3 w-full border border-blue-300 bg-white/90 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-sm"
-                  />
-                  <FaSearch className="absolute left-3 top-3.5 text-gray-400" />
-                </div>
-              </div>
-
-              {/* Status filter - Enhanced */}
-              <div className="w-full md:w-48">
-                <label className="block text-sm font-medium mb-1 text-blue-100">
-                  Status
-                </label>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-4 py-3 w-full border border-blue-300 bg-white/90 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-sm appearance-none"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd' /%3E%3C/svg%3E")`,
-                    backgroundPosition: "right 12px center",
-                    backgroundSize: "20px 20px",
-                    backgroundRepeat: "no-repeat",
-                    paddingRight: "40px",
-                  }}
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
-              </div>
-
-              {/* Filter actions - Enhanced */}
-              <div className="flex space-x-2">
-                <button
-                  onClick={resetFilters}
-                  className="px-4 py-3 border border-white/50 text-white rounded-md hover:bg-white/10 transition-colors shadow-sm"
-                >
-                  Reset
-                </button>
-              </div>
+          <div className="flex space-x-2">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search agreements..."
+                value={searchTerm}
+                onChange={handleSearch}
+                className="pl-9 pr-4 py-2 w-full md:w-64 border border-blue-300 bg-white/90 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-sm text-sm"
+              />
+              <FaSearch className="absolute left-3 top-2.5 text-gray-400" />
             </div>
+
+            <button
+              onClick={resetFilters}
+              className="px-3 py-2 bg-white/15 text-white rounded-md hover:bg-white/25 transition-colors shadow-sm text-sm flex items-center"
+            >
+              <FaFilter className="mr-1.5" />
+              Reset
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Active filters display - Enhanced */}
-      {(filterStatus !== "All" || searchTerm) && (
-        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4 shadow-sm">
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm text-gray-500 font-medium mr-2">
-              <FaFilter className="inline mr-1 text-blue-500" /> Active Filters:
+      {/* Status Tabs */}
+      <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-200">
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            onClick={() => setActiveTab("All")}
+            className={getTabStyle("All")}
+          >
+            <FaFileContract className="mr-1.5" />
+            All{" "}
+            <span className="ml-1.5 bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded-full text-xs">
+              {statusCounts.All}
             </span>
-
-            {searchTerm && (
-              <span className="px-3 py-1.5 bg-blue-100 text-blue-800 rounded-md text-xs font-medium flex items-center">
-                Search: {searchTerm}
-                <button
-                  onClick={() => setSearchTerm("")}
-                  className="ml-2 text-blue-500 hover:text-blue-700"
-                >
-                  <FaTimes size={10} />
-                </button>
-              </span>
-            )}
-
-            {filterStatus !== "All" && (
-              <span className="px-3 py-1.5 bg-blue-100 text-blue-800 rounded-md text-xs font-medium flex items-center">
-                Status: {filterStatus}
-                <button
-                  onClick={() => setFilterStatus("All")}
-                  className="ml-2 text-blue-500 hover:text-blue-700"
-                >
-                  <FaTimes size={10} />
-                </button>
-              </span>
-            )}
-
-            <span className="ml-auto text-sm text-gray-500">
-              <strong>{filteredAgreements.length}</strong> of{" "}
-              <strong>{agreements.length}</strong> agreements
+          </button>
+          <button
+            onClick={() => setActiveTab("Pending")}
+            className={getTabStyle("Pending")}
+          >
+            <FaClock className="mr-1.5" />
+            Pending{" "}
+            <span className="ml-1.5 bg-yellow-200 text-yellow-700 px-1.5 py-0.5 rounded-full text-xs">
+              {statusCounts.Pending}
             </span>
-          </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("Approved")}
+            className={getTabStyle("Approved")}
+          >
+            <FaCheck className="mr-1.5" />
+            Approved{" "}
+            <span className="ml-1.5 bg-green-200 text-green-700 px-1.5 py-0.5 rounded-full text-xs">
+              {statusCounts.Approved}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab("Rejected")}
+            className={getTabStyle("Rejected")}
+          >
+            <FaTimes className="mr-1.5" />
+            Rejected{" "}
+            <span className="ml-1.5 bg-red-200 text-red-700 px-1.5 py-0.5 rounded-full text-xs">
+              {statusCounts.Rejected}
+            </span>
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* Agreement List - Enhanced Cards */}
+      {/* Agreement List - List view instead of grid */}
       {filteredAgreements.length > 0 ? (
-        <div className="space-y-6">
-          {filteredAgreements.map((agreement) => {
-            const { bg, text, icon } = getStatusBadge(agreement.status);
-            return (
-              <div
-                key={agreement.agreementId}
-                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-200 w-full border border-gray-200 transform hover:-translate-y-1 hover:border-blue-200 transition-all"
-              >
-                <div className="border-l-4 border-[#20319D]">
-                  <div className="p-6">
-                    {/* Header with title and status - Enhanced */}
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="font-semibold text-lg text-gray-800 flex items-center">
-                          <FaFileContract className="text-[#20319D] mr-2" />
-                          Agreement #{agreement.agreementId}
-                        </h3>
-                        <p className="text-gray-500 text-sm mt-1">
-                          Booking ID: {agreement.bookingId}
-                        </p>
-                      </div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="divide-y divide-gray-200">
+            {currentItems.map((agreement) => {
+              const { bg, text, icon } = getStatusBadge(agreement.status);
+              const property = propertyDetails[agreement.bookingId] || {};
 
-                      <span
-                        className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium ${bg} ${text}`}
-                      >
-                        {icon} {agreement.status}
-                      </span>
-                    </div>
-
-                    {/* Property details - Enhanced with better layout */}
-                    <div className="mb-5 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                      <div className="flex items-start">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3 flex-shrink-0">
-                          <FaBuilding className="text-[#20319D]" />
+              return (
+                <div
+                  key={agreement.agreementId}
+                  className={`hover:bg-gray-50 transition-colors ${
+                    agreement.status === "Pending"
+                      ? "border-l-4 border-yellow-400"
+                      : agreement.status === "Approved"
+                      ? "border-l-4 border-green-400"
+                      : "border-l-4 border-red-400"
+                  }`}
+                >
+                  <div className="p-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between">
+                      {/* Agreement Details */}
+                      <div className="flex items-start mb-3 md:mb-0 flex-grow">
+                        <div className="flex-shrink-0 mr-3">
+                          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                            <FaHome className="text-[#20319D] text-lg" />
+                          </div>
                         </div>
+
                         <div>
-                          <p className="text-base font-medium text-gray-800">
-                            {getPropertyName(agreement.bookingId)}
-                          </p>
-                          <p className="text-sm text-gray-500 flex items-center mt-1">
-                            <FaMapMarkerAlt className="mr-1 text-gray-400" />
+                          <div className="flex items-center mb-1">
+                            <h3 className="font-medium text-base text-gray-800 mr-2">
+                              {getPropertyName(agreement.bookingId)}
+                            </h3>
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${bg} ${text}`}
+                            >
+                              {icon} {agreement.status}
+                            </span>
+                          </div>
+
+                          <p className="text-sm text-gray-600 mb-1 flex items-center">
+                            <FaMapMarkerAlt className="mr-1.5 text-gray-400" />
                             {getPropertyAddress(agreement.bookingId)}
                           </p>
-                          {propertyDetails[agreement.bookingId]?.price && (
-                            <p className="text-sm text-gray-500 flex items-center mt-1">
-                              <FaMoneyBillWave className="mr-1 text-gray-400" />
-                              <span className="font-medium text-[#20319D]">
-                                Rs. {propertyDetails[agreement.bookingId].price}
-                              </span>
-                              /month
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Agreement details grid - Enhanced */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div className="flex items-center bg-gray-50 p-3 rounded-lg">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-3 flex-shrink-0">
-                          <FaCalendarAlt className="text-[#20319D]" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">
-                            Lease Period
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {formatDate(agreement.startDate)} -{" "}
-                            {formatDate(agreement.endDate)}
-                          </p>
-                        </div>
-                      </div>
+                          <div className="flex flex-wrap gap-x-4 mt-2 text-xs text-gray-600">
+                            <span className="flex items-center">
+                              <FaUserAlt className="mr-1.5 text-blue-500" />
+                              {getRenterName(agreement.renterId)}
+                            </span>
 
-                      <div className="flex items-center bg-gray-50 p-3 rounded-lg">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-3 flex-shrink-0">
-                          <FaUserAlt className="text-[#20319D]" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">
-                            Renter
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {getRenterName(agreement.renterId)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                            <span className="flex items-center">
+                              <FaCalendarAlt className="mr-1.5 text-blue-500" />
+                              {formatDate(agreement.startDate)
+                                .split(" ")
+                                .slice(0, 2)
+                                .join(" ")}{" "}
+                              -{" "}
+                              {formatDate(agreement.endDate)
+                                .split(" ")
+                                .slice(0, 2)
+                                .join(" ")}
+                            </span>
 
-                    <div className="text-xs text-gray-500 mb-5 italic border-t border-gray-100 pt-2">
-                      Signed on {formatDate(agreement.signedAt)}
-                    </div>
-
-                    {/* Action buttons - Enhanced with better styling */}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {agreement.status === "Pending" && (
-                        <>
-                          <button
-                            onClick={() =>
-                              handleAcceptAgreement(agreement.agreementId)
-                            }
-                            disabled={processingIds.includes(
-                              agreement.agreementId
-                            )}
-                            className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
-                          >
-                            {processingIds.includes(agreement.agreementId) ? (
+                            {property.price && (
                               <span className="flex items-center">
-                                <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
-                                Processing...
+                                <FaMoneyBillWave className="mr-1.5 text-blue-500" />
+                                <span className="font-medium text-[#20319D]">
+                                  Rs. {property.price}
+                                </span>
+                                /month
                               </span>
-                            ) : (
-                              <>
-                                <FaCheck className="mr-2" /> Accept
-                              </>
                             )}
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleRejectAgreement(agreement.agreementId)
-                            }
-                            disabled={processingIds.includes(
-                              agreement.agreementId
-                            )}
-                            className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 transition-colors"
-                          >
-                            {processingIds.includes(agreement.agreementId) ? (
-                              <span className="flex items-center">
-                                <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
-                                Processing...
-                              </span>
-                            ) : (
-                              <>
-                                <FaTimes className="mr-2" /> Reject
-                              </>
-                            )}
-                          </button>
-                        </>
-                      )}
+                          </div>
+                        </div>
+                      </div>
 
-                      <div className="flex w-full gap-3 mt-3">
-                        {/* View Button - Enhanced */}
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {agreement.status === "Pending" && (
+                          <>
+                            <button
+                              onClick={() =>
+                                handleAcceptAgreement(agreement.agreementId)
+                              }
+                              disabled={processingIds.includes(
+                                agreement.agreementId
+                              )}
+                              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors flex items-center"
+                            >
+                              {processingIds.includes(agreement.agreementId) ? (
+                                <div className="animate-spin h-4 w-4 mr-1.5 border-2 border-white border-t-transparent rounded-full"></div>
+                              ) : (
+                                <FaCheck className="mr-1.5" />
+                              )}
+                              Accept
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleRejectAgreement(agreement.agreementId)
+                              }
+                              disabled={processingIds.includes(
+                                agreement.agreementId
+                              )}
+                              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors flex items-center"
+                            >
+                              {processingIds.includes(agreement.agreementId) ? (
+                                <div className="animate-spin h-4 w-4 mr-1.5 border-2 border-white border-t-transparent rounded-full"></div>
+                              ) : (
+                                <FaTimes className="mr-1.5" />
+                              )}
+                              Reject
+                            </button>
+                          </>
+                        )}
+
                         <button
                           onClick={() => handleViewAgreement(agreement)}
-                          className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-[#20319D] hover:bg-blue-800 text-white text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                          className="px-3 py-1.5 bg-[#20319D] hover:bg-blue-800 text-white text-sm font-medium rounded shadow-sm transition-colors flex items-center"
                         >
-                          <FaEye className="mr-2" /> View Agreement
+                          <FaEye className="mr-1.5" /> View
                         </button>
 
-                        {/* Download Button - Enhanced to match theme */}
                         <button
                           onClick={() => handlePdfDownload(agreement)}
                           disabled={downloadingIds.includes(
                             agreement.agreementId
                           )}
-                          className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-[#20319D] bg-opacity-80 hover:bg-opacity-100 text-white text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+                          className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors flex items-center"
                         >
                           {downloadingIds.includes(agreement.agreementId) ? (
-                            <span className="flex items-center">
-                              <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
-                              Generating...
-                            </span>
+                            <div className="animate-spin h-4 w-4 mr-1.5 border-2 border-white border-t-transparent rounded-full"></div>
                           ) : (
-                            <>
-                              <FaFileDownload className="mr-2" /> Download
-                            </>
+                            <FaFileDownload className="mr-1.5" />
                           )}
+                          Download
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+
+          {/* Show message when no agreements match the filter */}
+          {currentItems.length === 0 && (
+            <div className="text-center p-6">
+              <div className="w-12 h-12 bg-gray-100 mx-auto rounded-full flex items-center justify-center mb-3">
+                <FaInfoCircle className="text-2xl text-gray-400" />
               </div>
-            );
-          })}
+              <p className="text-base font-medium text-gray-700 mb-2">
+                No agreements found
+              </p>
+              <p className="text-gray-500 mb-4 max-w-md mx-auto text-sm">
+                {activeTab !== "All"
+                  ? `You don't have any ${activeTab.toLowerCase()} agreements`
+                  : "No agreements match your search"}
+              </p>
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors inline-flex items-center shadow-sm text-sm"
+                >
+                  <FaSearch className="mr-1.5" /> Clear Search
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
-        <div className="bg-white p-10 rounded-lg border border-gray-200 text-center shadow-sm">
-          <div className="w-16 h-16 bg-gray-100 mx-auto rounded-full flex items-center justify-center mb-4">
-            <FaInfoCircle className="text-3xl text-gray-400" />
+        <div className="bg-white p-6 rounded-lg border border-gray-200 text-center shadow-sm">
+          <div className="w-12 h-12 bg-gray-100 mx-auto rounded-full flex items-center justify-center mb-3">
+            <FaInfoCircle className="text-2xl text-gray-400" />
           </div>
-          <p className="text-lg font-medium text-gray-700 mb-2">
+          <p className="text-base font-medium text-gray-700 mb-2">
             No agreements match your filters
           </p>
-          <p className="text-gray-500 mb-6 max-w-md mx-auto">
-            Try adjusting your filter criteria or search term to find the
-            agreements you're looking for
+          <p className="text-gray-500 mb-4 max-w-md mx-auto text-sm">
+            Try adjusting your filter criteria or search term
           </p>
           <button
             onClick={resetFilters}
-            className="px-5 py-3 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors inline-flex items-center shadow-sm"
+            className="px-4 py-2 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors inline-flex items-center shadow-sm text-sm"
           >
-            <FaFilter className="mr-2" /> Reset Filters
+            <FaFilter className="mr-1.5" /> Reset Filters
           </button>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {filteredAgreements.length > 0 && (
+        <div className="mt-4">
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            setCurrentPage={setCurrentPage}
+          />
         </div>
       )}
 
@@ -945,4 +916,4 @@ const BookingList = () => {
   );
 };
 
-export default BookingList;
+export default AgreementList;

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { MdSpaceDashboard, MdOutlineChat } from "react-icons/md";
-import { BsCalendarCheck } from "react-icons/bs";
 import { FaMoneyCheckAlt } from "react-icons/fa";
+import { FaFileContract, FaCalendarAlt } from "react-icons/fa";
 import { HiMenuAlt3 } from "react-icons/hi";
 import Logo from "../../assets/images/Logo.png";
 
@@ -31,7 +31,16 @@ const Sidebar = () => {
       path: "/landlord/property",
       icon: <MdSpaceDashboard />,
     },
-    { title: "Booking", path: "/landlord/booking", icon: <BsCalendarCheck /> },
+    {
+      title: "Agreement",
+      path: "/landlord/agreements",
+      icon: <FaFileContract />,
+    },
+    {
+      title: "Bookings",
+      path: "/landlord/bookings",
+      icon: <FaCalendarAlt />,
+    },
     { title: "Chat", path: "/landlord/chat", icon: <MdOutlineChat /> },
     { title: "Payment", path: "/landlord/payment", icon: <FaMoneyCheckAlt /> },
   ];

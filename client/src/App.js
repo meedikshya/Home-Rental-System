@@ -15,7 +15,8 @@ import {
 import Layout from "./components/Landlord/Layout.js";
 import Property from "./pages/Landlord/Property.js";
 import Home from "./pages/Landlord/Home.js";
-import Booking from "./pages/Landlord/Booking.js";
+import Booking from "./pages/Landlord/AgreementLandlord.js";
+import BookingLandlord from "./pages/Landlord/BookingLandlord.js";
 import Chat from "./pages/Landlord/Chat.js";
 import ChatPage from "./pages/Landlord/ChatPage.js";
 import Payment from "./pages/Landlord/Payment.js";
@@ -41,6 +42,7 @@ import RoleProtectedRoute from "./components/ProtectedRoutes/RoleProtectedRoutes
 import { FIREBASE_AUTH } from "./services/Firebase-config.js";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import AgreementLandlord from "./pages/Landlord/AgreementLandlord.js";
 
 function App() {
   // Initialize notifications - similar to your mobile app
@@ -126,10 +128,8 @@ function App() {
                 <Layout>
                   <Routes>
                     <Route path="property" element={<Property />} />
-                    <Route path="booking" element={<Booking />} />
-                    {/* Add this new route for agreement details */}
-                    <Route path="booking/:agreementId" element={<Booking />} />
-
+                    <Route path="agreements" element={<AgreementLandlord />} />
+                    <Route path="bookings" element={<BookingLandlord />} />
                     <Route path="chat" element={<Chat />} />
                     <Route path="chat/:chatId" element={<ChatPage />} />
                     <Route path="payment" element={<Payment />} />
