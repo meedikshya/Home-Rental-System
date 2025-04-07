@@ -1,40 +1,33 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
 import { getUserDataFromFirebase } from "../../context/AuthContext.js";
 import { toast } from "react-toastify";
 import ApiHandler from "../../api/ApiHandler.js";
-import {
-  FaBed,
-  FaBath,
-  FaHome,
-  FaEdit,
-  FaTrash,
-  FaMapMarkerAlt,
-  FaImage,
-  FaTimes,
-  FaCheck,
-  FaImages,
-  FaCheckCircle,
-  FaArrowLeft,
-  FaArrowRight,
-  FaExpand,
-  FaChevronLeft,
-  FaChevronRight,
-} from "react-icons/fa";
-import PropertyDetailsForm from "./PropertyDetailsForm.js";
-import PropertyImageUpload from "./PropertyImageUpload.js";
-import ImageSlider from "./Imageslider.js";
+import PaginationControls from "../UI/PaginationControls.js";
+import PropertyFilterPanel from "../admin/PropertyFilterPanel.js";
 
-const PropertyList = () => {
-  const navigate = useNavigate();
+// Import the extracted components
+import PropertyHeader from "./PropertyHeader.js";
+import PropertyCard from "./PropertyCard.js";
+import EditPropertyModal from "./EditPropertyModal.js";
+import ImageSliderModal from "./ImageSliderModal.js";
+import ActiveFilters from "./ActiveFilters.js";
+import EmptyState from "./EmptyState.js";
+// import ResultsCount from "./ResultCount.js";
+import NoMatchingProperties from "./NoMatchingProperties.js";
+import LoadingState from "./LoadingState.js";
+import ErrorState from "./ErrorState.js";
+
+const PropertyList = ({ onAddProperty }) => {
   const [landlordId, setLandlordId] = useState(null);
   const [properties, setProperties] = useState([]);
   const [propertyImages, setPropertyImages] = useState({});
   const [objectUrls, setObjectUrls] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState(null);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,20 +41,44 @@ const PropertyList = () => {
   // Track which image is currently displayed for each property
   const [currentImageIndices, setCurrentImageIndices] = useState({});
 
-  // Get user's landlord ID
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(6);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Filter state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [filterRoomType, setFilterRoomType] = useState("All");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [bedrooms, setBedrooms] = useState("");
+  const [bathrooms, setBathrooms] = useState("");
+  const [kitchens, setKitchens] = useState("");
+  const [isFilterVisible, setIsFilterVisible] = useState(false);
+  const [allProperties, setAllProperties] = useState([]);
+
+  // Get user's landlord ID and token
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       FIREBASE_AUTH,
       async (currentUser) => {
         if (currentUser) {
-          const userId = await getUserDataFromFirebase();
-          if (userId) {
-            setLandlordId(userId);
-          } else {
-            toast.error("Failed to fetch landlord ID.");
+          try {
+            const userId = await getUserDataFromFirebase();
+            if (userId) {
+              setLandlordId(userId);
+            } else {
+              toast.error("Failed to fetch landlord ID.");
+            }
+            const idToken = await currentUser.getIdToken(true);
+            setToken(idToken);
+          } catch (error) {
+            console.error("Error getting token or user data:", error);
           }
         } else {
           setLandlordId(null);
+          setToken(null);
         }
         setLoading(false);
       }
@@ -73,13 +90,12 @@ const PropertyList = () => {
   // Fetch properties when landlord ID is available
   useEffect(() => {
     const fetchProperties = async () => {
-      if (!landlordId) return;
+      if (!landlordId || !token) return;
 
       try {
         setLoading(true);
         setError(null);
 
-        const token = await FIREBASE_AUTH.currentUser.getIdToken(true);
         const response = await ApiHandler.get(
           `/Properties/Landlord/${landlordId}`,
           {
@@ -89,10 +105,14 @@ const PropertyList = () => {
           }
         );
 
-        setProperties(response || []);
+        if (response) {
+          setAllProperties(response || []);
+          setProperties(response || []);
+          setTotalPages(Math.ceil(response.length / itemsPerPage));
 
-        if (response && response.length > 0) {
-          fetchPropertyImages(token);
+          if (response.length > 0) {
+            fetchPropertyImages(token);
+          }
         }
       } catch (err) {
         console.error("Error fetching properties:", err);
@@ -103,10 +123,10 @@ const PropertyList = () => {
       }
     };
 
-    if (landlordId) {
+    if (landlordId && token) {
       fetchProperties();
     }
-  }, [landlordId]);
+  }, [landlordId, token, itemsPerPage]);
 
   // Optimized function to fetch and process images in one step
   const fetchPropertyImages = async (token) => {
@@ -240,6 +260,9 @@ const PropertyList = () => {
         });
 
         setProperties(properties.filter((p) => p.propertyId !== propertyId));
+        setAllProperties(
+          allProperties.filter((p) => p.propertyId !== propertyId)
+        );
         toast.success("Property deleted successfully");
       } catch (err) {
         console.error("Error deleting property:", err);
@@ -277,7 +300,8 @@ const PropertyList = () => {
           );
 
           if (response) {
-            setProperties(response || []);
+            setAllProperties(response || []);
+            applyFiltersToProperties(response);
             fetchPropertyImages(token);
           }
         } catch (err) {
@@ -319,407 +343,380 @@ const PropertyList = () => {
     setCurrentPropertyImages([]);
   };
 
+  // Reset filters
+  const handleResetFilters = useCallback(() => {
+    setSearchTerm("");
+    setStatusFilter("All");
+    setFilterRoomType("All");
+    setMinPrice("");
+    setMaxPrice("");
+    setBedrooms("");
+    setBathrooms("");
+    setKitchens("");
+    setCurrentPage(1);
+
+    if (allProperties.length > 0) {
+      setProperties(allProperties);
+      setTotalPages(Math.ceil(allProperties.length / itemsPerPage));
+    }
+  }, [allProperties, itemsPerPage]);
+
+  // Apply filters to properties
+  const applyFiltersToProperties = useCallback(
+    (propertiesToFilter = allProperties) => {
+      if (!propertiesToFilter || propertiesToFilter.length === 0) return;
+
+      // Apply all filters
+      let filteredData = [...propertiesToFilter];
+
+      // Apply search term filter (city or municipality or title)
+      if (searchTerm) {
+        filteredData = filteredData.filter(
+          (property) =>
+            property.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            property.municipality
+              ?.toLowerCase()
+              .includes(searchTerm.toLowerCase()) ||
+            property.title?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
+
+      // Apply status filter
+      if (statusFilter !== "All") {
+        filteredData = filteredData.filter(
+          (property) => property.status === statusFilter
+        );
+      }
+
+      // Apply room type filter
+      if (filterRoomType !== "All") {
+        filteredData = filteredData.filter(
+          (property) => property.roomType === filterRoomType
+        );
+      }
+
+      // Apply price range filters
+      if (minPrice) {
+        filteredData = filteredData.filter(
+          (property) => parseInt(property.price) >= parseInt(minPrice)
+        );
+      }
+      if (maxPrice) {
+        filteredData = filteredData.filter(
+          (property) => parseInt(property.price) <= parseInt(maxPrice)
+        );
+      }
+
+      // Apply room count filters
+      if (bedrooms) {
+        filteredData = filteredData.filter(
+          (property) => property.totalBedrooms >= parseInt(bedrooms)
+        );
+      }
+      if (bathrooms) {
+        filteredData = filteredData.filter(
+          (property) => property.totalWashrooms >= parseInt(bathrooms)
+        );
+      }
+      if (kitchens) {
+        filteredData = filteredData.filter(
+          (property) => property.totalKitchens >= parseInt(kitchens)
+        );
+      }
+
+      // Update properties with the filtered results
+      setProperties(filteredData);
+
+      // Update total pages
+      setTotalPages(Math.ceil(filteredData.length / itemsPerPage));
+
+      // Reset to first page when filters change
+      setCurrentPage(1);
+    },
+    [
+      searchTerm,
+      statusFilter,
+      filterRoomType,
+      minPrice,
+      maxPrice,
+      bedrooms,
+      bathrooms,
+      kitchens,
+      allProperties,
+      itemsPerPage,
+    ]
+  );
+
+  // Handle apply filters button click
+  const handleApplyFilters = useCallback(
+    (filters) => {
+      // Set all filter states based on the filters object
+      if (filters.city !== undefined) setSearchTerm(filters.city);
+      if (filters.status !== undefined)
+        setStatusFilter(filters.status || "All");
+      if (filters.roomType !== undefined)
+        setFilterRoomType(filters.roomType || "All");
+      if (filters.minPrice !== undefined) setMinPrice(filters.minPrice || "");
+      if (filters.maxPrice !== undefined) setMaxPrice(filters.maxPrice || "");
+      if (filters.bedrooms !== undefined) setBedrooms(filters.bedrooms || "");
+      if (filters.bathrooms !== undefined)
+        setBathrooms(filters.bathrooms || "");
+      if (filters.kitchens !== undefined) setKitchens(filters.kitchens || "");
+
+      // Apply filters manually since we're setting state values that won't be reflected immediately
+      let filteredData = [...allProperties];
+
+      if (filters.city) {
+        filteredData = filteredData.filter(
+          (property) =>
+            property.city?.toLowerCase().includes(filters.city.toLowerCase()) ||
+            property.municipality
+              ?.toLowerCase()
+              .includes(filters.city.toLowerCase()) ||
+            property.title?.toLowerCase().includes(filters.city.toLowerCase())
+        );
+      }
+
+      if (filters.status && filters.status !== "All") {
+        filteredData = filteredData.filter(
+          (property) => property.status === filters.status
+        );
+      }
+
+      if (filters.roomType && filters.roomType !== "All") {
+        filteredData = filteredData.filter(
+          (property) => property.roomType === filters.roomType
+        );
+      }
+
+      if (filters.minPrice) {
+        filteredData = filteredData.filter(
+          (property) => parseInt(property.price) >= parseInt(filters.minPrice)
+        );
+      }
+
+      if (filters.maxPrice) {
+        filteredData = filteredData.filter(
+          (property) => parseInt(property.price) <= parseInt(filters.maxPrice)
+        );
+      }
+
+      if (filters.bedrooms) {
+        filteredData = filteredData.filter(
+          (property) => property.totalBedrooms >= parseInt(filters.bedrooms)
+        );
+      }
+
+      if (filters.bathrooms) {
+        filteredData = filteredData.filter(
+          (property) => property.totalWashrooms >= parseInt(filters.bathrooms)
+        );
+      }
+
+      if (filters.kitchens) {
+        filteredData = filteredData.filter(
+          (property) => property.totalKitchens >= parseInt(filters.kitchens)
+        );
+      }
+
+      setProperties(filteredData);
+      setTotalPages(Math.ceil(filteredData.length / itemsPerPage));
+      setCurrentPage(1);
+    },
+    [allProperties, itemsPerPage]
+  );
+
+  // Effect to apply filters when any filter changes
+  useEffect(() => {
+    if (allProperties.length > 0) {
+      applyFiltersToProperties();
+    }
+  }, [
+    searchTerm,
+    statusFilter,
+    filterRoomType,
+    minPrice,
+    maxPrice,
+    bedrooms,
+    bathrooms,
+    kitchens,
+    applyFiltersToProperties,
+  ]);
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return (
+      searchTerm ||
+      statusFilter !== "All" ||
+      filterRoomType !== "All" ||
+      minPrice ||
+      maxPrice ||
+      bedrooms ||
+      bathrooms ||
+      kitchens
+    );
+  }, [
+    searchTerm,
+    statusFilter,
+    filterRoomType,
+    minPrice,
+    maxPrice,
+    bedrooms,
+    bathrooms,
+    kitchens,
+  ]);
+
+  // Get paginated properties
+  const paginatedProperties = useMemo(() => {
+    const indexOfLastProperty = currentPage * itemsPerPage;
+    const indexOfFirstProperty = indexOfLastProperty - itemsPerPage;
+    return properties.slice(indexOfFirstProperty, indexOfLastProperty);
+  }, [properties, currentPage, itemsPerPage]);
+
   // Loading state
   if (loading && !properties.length) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   // Error state
   if (error) {
-    return (
-      <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-red-700">
-        <p>{error}</p>
-        <button
-          className="mt-2 text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded"
-          onClick={() => window.location.reload()}
-        >
-          Try Again
-        </button>
-      </div>
-    );
+    return <ErrorState error={error} />;
   }
 
   // Empty state
-  if (!loading && !properties.length) {
-    return (
-      <div className="bg-blue-50 p-8 rounded-lg border border-blue-200 text-center">
-        <FaHome className="text-blue-400 text-5xl mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-blue-700 mb-2">
-          No Properties Yet
-        </h3>
-        <p className="text-blue-600 mb-4">
-          You haven't added any properties to your listing.
-        </p>
-        <p className="text-gray-500 mb-4">
-          Click the "Add Property" button to get started.
-        </p>
-      </div>
-    );
+  if (!loading && !allProperties.length) {
+    return <EmptyState onAddProperty={onAddProperty} />;
   }
 
   // Main property list
   return (
     <>
-      {/* Edit Property Modal */}
-      {isModalOpen && selectedProperty && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h2 className="text-xl font-bold text-gray-800">
-                Edit Property: {selectedProperty.title}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <FaTimes size={20} />
-              </button>
-            </div>
+      {/* Modals */}
+      <EditPropertyModal
+        isModalOpen={isModalOpen}
+        selectedProperty={selectedProperty}
+        handleCloseModal={handleCloseModal}
+        currentStep={currentStep}
+        handleStepChange={handleStepChange}
+        setCurrentStep={setCurrentStep}
+        landlordId={landlordId}
+      />
 
-            {/* Steps Indicator */}
-            <div className="p-4 border-b">
-              <div className="flex items-center justify-center mb-4">
-                <div className="flex items-center">
-                  {/* Step 1 Indicator */}
-                  <div
-                    className={`flex items-center justify-center w-12 h-12 rounded-full cursor-pointer
-                      ${currentStep >= 1 ? "bg-blue-500" : "bg-gray-300"}
-                      transition-colors duration-300`}
-                    onClick={() => handleStepChange(1)}
-                  >
-                    {currentStep > 1 ? (
-                      <FaCheck className="text-white text-xl" />
-                    ) : (
-                      <FaHome className="text-white text-xl" />
-                    )}
-                  </div>
+      <ImageSliderModal
+        isOpen={isImageSliderOpen}
+        onClose={handleCloseImageSlider}
+        images={currentPropertyImages}
+      />
 
-                  {/* Connector */}
-                  <div
-                    className={`h-1 w-32 mx-2 ${
-                      currentStep > 1 ? "bg-blue-500" : "bg-gray-300"
-                    } transition-colors duration-300`}
-                  />
+      {/* Header */}
+      <PropertyHeader
+        onAddProperty={onAddProperty}
+        isFilterVisible={isFilterVisible}
+        setIsFilterVisible={setIsFilterVisible}
+        propertyCount={allProperties.length}
+      />
 
-                  {/* Step 2 Indicator */}
-                  <div
-                    className={`flex items-center justify-center w-12 h-12 rounded-full cursor-pointer
-                      ${currentStep >= 2 ? "bg-blue-500" : "bg-gray-300"}
-                      transition-colors duration-300`}
-                    onClick={() => currentStep > 1 && handleStepChange(2)}
-                  >
-                    {currentStep > 2 ? (
-                      <FaCheck className="text-white text-xl" />
-                    ) : (
-                      <FaImages className="text-white text-xl" />
-                    )}
-                  </div>
-
-                  {/* Connector */}
-                  <div
-                    className={`h-1 w-32 mx-2 ${
-                      currentStep > 2 ? "bg-blue-500" : "bg-gray-300"
-                    } transition-colors duration-300`}
-                  />
-
-                  {/* Step 3 Indicator */}
-                  <div
-                    className={`flex items-center justify-center w-12 h-12 rounded-full
-                      ${currentStep === 3 ? "bg-blue-500" : "bg-gray-300"}
-                      transition-colors duration-300`}
-                  >
-                    <FaCheckCircle className="text-white text-xl" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Step Labels */}
-              <div className="flex justify-center text-sm">
-                <div
-                  className={`text-center mx-8 ${
-                    currentStep >= 1
-                      ? "text-blue-600 font-medium"
-                      : "text-gray-500"
-                  } transition-colors duration-300`}
-                >
-                  Edit Details
-                </div>
-                <div
-                  className={`text-center mx-8 ${
-                    currentStep >= 2
-                      ? "text-blue-600 font-medium"
-                      : "text-gray-500"
-                  } transition-colors duration-300`}
-                >
-                  Manage Images
-                </div>
-                <div
-                  className={`text-center mx-8 ${
-                    currentStep === 3
-                      ? "text-blue-600 font-medium"
-                      : "text-gray-500"
-                  } transition-colors duration-300`}
-                >
-                  Finish
-                </div>
-              </div>
-            </div>
-
-            {/* Content based on current step */}
-            <div className="p-4 overflow-y-auto">
-              {currentStep === 1 && (
-                <PropertyDetailsForm
-                  initialData={selectedProperty}
-                  propertyId={parseInt(selectedProperty.propertyId)}
-                  landlordId={landlordId}
-                  setCurrentStep={setCurrentStep}
-                  mode="edit"
-                />
-              )}
-
-              {currentStep === 2 && (
-                <PropertyImageUpload
-                  propertyId={parseInt(selectedProperty.propertyId)}
-                  setCurrentStep={setCurrentStep}
-                  onClose={null}
-                />
-              )}
-
-              {currentStep === 3 && (
-                <div className="text-center py-10 bg-white rounded-lg">
-                  <div className="bg-green-100 rounded-full w-20 h-20 mx-auto flex items-center justify-center mb-6">
-                    <FaCheckCircle className="text-green-600 text-4xl" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-green-600 mb-4">
-                    Success!
-                  </h2>
-                  <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                    Your property has been updated successfully. All details and
-                    images have been saved.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <button
-                      onClick={handleCloseModal}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md transition"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Full screen Image Slider Modal */}
-      {isImageSliderOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
-          <div className="w-full h-full max-w-6xl p-4">
-            <div className="flex justify-end mb-2">
-              <button
-                onClick={handleCloseImageSlider}
-                className="bg-black bg-opacity-70 text-white p-2 rounded-full hover:bg-opacity-100 transition-opacity"
-              >
-                <FaTimes size={20} />
-              </button>
-            </div>
-
-            <ImageSlider
-              images={currentPropertyImages}
-              showThumbnails={true}
-              autoPlay={false}
-              showFullscreenButton={false}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="mb-4 flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-gray-700">Your Properties</h2>
+      {/* Filters */}
+      <div
+        className={`transition-all duration-500 ease-in-out overflow-hidden ${
+          isFilterVisible
+            ? "max-h-[1000px] opacity-100 mb-6 transform translate-y-0"
+            : "max-h-0 opacity-0 transform -translate-y-4"
+        }`}
+      >
+        <PropertyFilterPanel
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          filterStatus={statusFilter}
+          setFilterStatus={setStatusFilter}
+          filterRoomType={filterRoomType}
+          setFilterRoomType={setFilterRoomType}
+          handleResetFilters={handleResetFilters}
+          minPrice={minPrice}
+          setMinPrice={setMinPrice}
+          maxPrice={maxPrice}
+          setMaxPrice={setMaxPrice}
+          bedrooms={bedrooms}
+          setBedrooms={setBedrooms}
+          bathrooms={bathrooms}
+          setBathrooms={setBathrooms}
+          kitchens={kitchens}
+          setKitchens={setKitchens}
+          token={token}
+          isLoading={loading}
+          onApplyFilters={handleApplyFilters}
+        />
       </div>
 
-      {/* Property grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {properties.map((property) => {
-          const propertyId = property.propertyId;
-          const images = propertyImages[propertyId] || [];
-          const hasMultipleImages = images.length > 1;
-          const currentIdx = currentImageIndices[propertyId] || 0;
-          const imageUrl =
-            hasMultipleImages && images[currentIdx]?.imageUrl
-              ? images[currentIdx].imageUrl
-              : objectUrls[propertyId];
+      {/* Active Filters */}
+      <ActiveFilters
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        filterRoomType={filterRoomType}
+        setFilterRoomType={setFilterRoomType}
+        minPrice={minPrice}
+        setMinPrice={setMinPrice}
+        maxPrice={maxPrice}
+        setMaxPrice={setMaxPrice}
+        bedrooms={bedrooms}
+        setBedrooms={setBedrooms}
+        bathrooms={bathrooms}
+        setBathrooms={setBathrooms}
+        kitchens={kitchens}
+        setKitchens={setKitchens}
+        handleResetFilters={handleResetFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
 
-          return (
-            <div
-              key={propertyId}
-              className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
-            >
-              {/* Property image section with slider controls */}
-              <div className="h-48 bg-gray-200 relative overflow-hidden group">
-                {imageUrl ? (
-                  <div className="relative w-full h-full">
-                    <img
-                      src={imageUrl}
-                      alt={property.title || "Property image"}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                    {/* Image slider navigation arrows - only show if multiple images */}
-                    {hasMultipleImages && (
-                      <>
-                        {/* Left arrow */}
-                        <button
-                          onClick={(e) => goToPrevImage(propertyId, e)}
-                          className="absolute top-1/2 left-2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition opacity-0 group-hover:opacity-100"
-                          aria-label="Previous image"
-                        >
-                          <FaChevronLeft size={16} />
-                        </button>
+      {/* Property Grid */}
+      {properties.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {paginatedProperties.map((property) => {
+            const propertyId = property.propertyId;
+            const images = propertyImages[propertyId] || [];
+            const hasMultipleImages = images.length > 1;
+            const currentIdx = currentImageIndices[propertyId] || 0;
+            const imageUrl =
+              hasMultipleImages && images[currentIdx]?.imageUrl
+                ? images[currentIdx].imageUrl
+                : objectUrls[propertyId];
 
-                        {/* Right arrow */}
-                        <button
-                          onClick={(e) => goToNextImage(propertyId, e)}
-                          className="absolute top-1/2 right-2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition opacity-0 group-hover:opacity-100"
-                          aria-label="Next image"
-                        >
-                          <FaChevronRight size={16} />
-                        </button>
-                      </>
-                    )}
-                    {/* Image count indicator */}
-                    {hasMultipleImages && (
-                      <div className="absolute bottom-2 left-0 right-0 flex justify-center space-x-2">
-                        {images.map((_, index) => (
-                          <button
-                            key={index}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
+            return (
+              <PropertyCard
+                key={propertyId}
+                property={property}
+                imageUrl={imageUrl}
+                images={images}
+                hasMultipleImages={hasMultipleImages}
+                currentIdx={currentIdx}
+                goToPrevImage={goToPrevImage}
+                goToNextImage={goToNextImage}
+                handleOpenImageSlider={handleOpenImageSlider}
+                handleEditProperty={handleEditProperty}
+                handleDeleteProperty={handleDeleteProperty}
+                processImageUrl={processImageUrl}
+                setCurrentImageIndices={setCurrentImageIndices}
+                setObjectUrls={setObjectUrls}
+              />
+            );
+          })}
+        </div>
+      ) : hasActiveFilters ? (
+        <NoMatchingProperties handleResetFilters={handleResetFilters} />
+      ) : null}
 
-                              setCurrentImageIndices((prev) => ({
-                                ...prev,
-                                [propertyId]: index,
-                              }));
-
-                              // Update displayed image
-                              setObjectUrls((prev) => ({
-                                ...prev,
-                                [propertyId]: processImageUrl(
-                                  images[index].imageUrl
-                                ),
-                              }));
-                            }}
-                            className={`w-2 h-2 rounded-full transition-transform duration-200 ${
-                              currentIdx === index
-                                ? "bg-white scale-125"
-                                : "bg-white opacity-60 hover:opacity-80"
-                            }`}
-                            aria-label={`Image ${index + 1} of ${
-                              images.length
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full flex-col">
-                    <FaHome className="text-gray-400 text-5xl mb-2" />
-                    <span className="text-gray-500 text-sm">No image</span>
-                  </div>
-                )}
-
-                {/* View all images overlay button */}
-                {hasMultipleImages && (
-                  <div
-                    onClick={() => handleOpenImageSlider(propertyId)}
-                    className="absolute top-2 right-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full cursor-pointer transition opacity-0 group-hover:opacity-100"
-                  >
-                    <FaImages size={14} />
-                  </div>
-                )}
-              </div>
-
-              {/* Property details */}
-              <div className="p-5">
-                <div className="flex justify-between items-start">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">
-                    {property.title}
-                  </h3>
-                  <span className="text-lg font-bold text-green-600">
-                    ₹{property.price}
-                  </span>
-                </div>
-
-                <div className="flex items-center text-gray-500 mb-3">
-                  <FaMapMarkerAlt className="mr-1" />
-                  <span>
-                    {property.municipality}, {property.city}
-                  </span>
-                </div>
-
-                <p className="text-gray-600 mb-4 line-clamp-2">
-                  {property.description}
-                </p>
-
-                <div className="flex justify-between mb-4">
-                  <div className="flex items-center text-gray-700">
-                    <FaBed className="mr-1" />
-                    <span>{property.totalBedrooms} bed</span>
-                  </div>
-                  <div className="flex items-center text-gray-700">
-                    <FaBath className="mr-1" />
-                    <span>{property.totalWashrooms} bath</span>
-                  </div>
-                  <div className="flex items-center text-gray-700">
-                    <span className="text-xs font-medium px-2 py-1 rounded bg-blue-100 text-blue-800">
-                      {property.roomType}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <span
-                    className={`text-xs font-medium px-2 py-1 rounded ${
-                      property.status === "Available"
-                        ? "bg-green-100 text-green-800"
-                        : property.status === "Rented"
-                        ? "bg-red-100 text-red-800"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {property.status}
-                  </span>
-                </div>
-
-                {/* Action buttons */}
-                <div className="flex justify-between pt-2 border-t">
-                  <button
-                    className="flex items-center text-blue-500 hover:text-blue-700"
-                    onClick={() => handleEditProperty(propertyId)}
-                  >
-                    <FaEdit className="mr-1" />
-                    <span>Edit</span>
-                  </button>
-                  <button
-                    className="flex items-center text-red-500 hover:text-red-700"
-                    onClick={() => handleDeleteProperty(propertyId)}
-                  >
-                    <FaTrash className="mr-1" />
-                    <span>Delete</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Pagination */}
+      {properties.length > itemsPerPage && (
+        <div className="mt-8">
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            setCurrentPage={setCurrentPage}
+          />
+        </div>
+      )}
     </>
   );
 };

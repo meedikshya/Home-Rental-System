@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import AddPropertyForm from "../../components/property/AddPropertyForm.js";
-import { FaPlus, FaTimes } from "react-icons/fa";
+import { FaTimes } from "react-icons/fa";
 import PropertyList from "../../components/property/PropertyList.jsx";
 
 const Property = () => {
@@ -18,23 +18,13 @@ const Property = () => {
 
   return (
     <div className="relative min-h-screen">
-      <div className="flex justify-end mb-6 pr-4">
-        <button
-          onClick={openModal}
-          className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg shadow-md transition-colors duration-300"
-        >
-          <FaPlus />
-          <span>Add New Property</span>
-        </button>
-      </div>
-
-      {/* Your existing property list/content would go here */}
+      {/* Pass the openModal function to PropertyList */}
       <div className="mt-6">
-        <PropertyList />
+        <PropertyList onAddProperty={openModal} />
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 overflow-auto bg-black bg-opacity-50 flex items-center justify-end pr-4 md:pr-16 lg:pr-36">
+        <div className="fixed inset-0 overflow-auto bg-black bg-opacity-50 flex items-center justify-end pr-4 md:pr-16 lg:pr-36 z-50">
           <div className="relative bg-white w-full max-w-3xl rounded-lg shadow-xl animate-slideInRight mr-0 ml-auto">
             {/* Modal header */}
             <div className="flex items-center justify-between p-4 border-b">
