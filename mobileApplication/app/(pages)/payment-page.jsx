@@ -17,6 +17,7 @@ import { useNavigation } from "@react-navigation/native";
 import * as WebBrowser from "expo-web-browser";
 import ApiHandler from "../../api/ApiHandler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { sendNotificationToUser } from "../../firebaseNotification.js";
 
 const PaymentPage = () => {
   const router = useRouter();
@@ -30,7 +31,15 @@ const PaymentPage = () => {
   const [paymentData, setPaymentData] = useState(null);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
 
-  const { agreementId, price, address, landlordName } = params;
+  const {
+    agreementId,
+    price,
+    address,
+    landlordName,
+    landlordId,
+    renterId,
+    propertyId,
+  } = params;
 
   const API_BASE_URL =
     Platform.OS === "android"
@@ -167,6 +176,56 @@ const PaymentPage = () => {
           referenceId: data.payment.referenceId || "N/A",
           paymentGateway: "eSewa",
         });
+
+        // Send notification to landlord about completed payment
+        if (landlordId) {
+          const notificationTitle = "Payment Received";
+          const notificationBody = `Payment of Rs. ${price} has been received for your property at ${address}.`;
+
+          // Additional data to be included with the notification
+          const additionalData = {
+            propertyId,
+            agreementId,
+            paymentId: data.payment.id || 0,
+            screen: "LandlordPaymentDetails", // Screen to navigate to when notification is tapped
+            action: "view_payment",
+            timestamp: new Date().toISOString(),
+          };
+
+          // Send the notification
+          await sendNotificationToUser(
+            landlordId,
+            notificationTitle,
+            notificationBody,
+            additionalData
+          );
+
+          console.log("Payment notification sent to landlord:", landlordId);
+        }
+
+        // Send confirmation notification to renter
+        if (renterId) {
+          const notificationTitle = "Payment Successful";
+          const notificationBody = `Your payment of Rs. ${price} for property at ${address} has been successfully processed.`;
+
+          const additionalData = {
+            propertyId,
+            agreementId,
+            paymentId: data.payment.id || 0,
+            screen: "RenterPaymentDetails",
+            action: "view_payment_receipt",
+            timestamp: new Date().toISOString(),
+          };
+
+          await sendNotificationToUser(
+            renterId,
+            notificationTitle,
+            notificationBody,
+            additionalData
+          );
+
+          console.log("Payment confirmation sent to renter:", renterId);
+        }
 
         Alert.alert("Success", "Your payment was successful!", [
           { text: "OK", onPress: () => navigation.goBack() },

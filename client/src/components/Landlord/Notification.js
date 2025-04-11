@@ -1,15 +1,22 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  getDocs,
+  limit,
+} from "firebase/firestore";
 import { FIREBASE_DB } from "../../services/Firebase-config.js";
-import {
-  getUserDataFromFirebase,
-  getFirebaseIdFromUserId,
-} from "../../context/AuthContext.js";
+import { getFirebaseIdFromUserId } from "../../context/AuthContext.js";
 import ApiHandler from "../../api/ApiHandler.js";
-import {
-  listenForUserNotifications,
-  markNotificationAsRead,
-} from "../../services/Firebase-notification.js";
+import { markNotificationAsRead } from "../../services/Firebase-notification.js";
 import {
   FiBell,
   FiClock,
@@ -21,274 +28,503 @@ import {
   FiDollarSign,
   FiInfo,
   FiPackage,
+  FiCheck,
+  FiRefreshCw,
 } from "react-icons/fi";
+
+// Cache for usernames across instances
+const usernameCache = {};
 
 const NotificationPage = ({
   userId,
   navigateFunction,
+  existingUnreadCount,
+
   onUnreadCountChange,
 }) => {
+  // Core states
   const [notifications, setNotifications] = useState([]);
   const [usernames, setUsernames] = useState({});
-  const [currentUserId, setCurrentUserId] = useState(userId || null);
-  const [firebaseUserId, setFirebaseUserId] = useState(null);
-  const [currentUserName, setCurrentUserName] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Visibility states (controls render timing)
+  const [showContent, setShowContent] = useState(false);
+
+  // Cache key based on user ID
+  const cacheKey = useMemo(
+    () => `notifications_${userId || "guest"}`,
+    [userId]
+  );
+
+  // Tracking refs
   const fetchedUserIds = useRef(new Set());
+  const loadingTimeoutRef = useRef(null);
+  const cachedNotifications = useRef(null);
 
-  // Calculate unread count and expose it to parent component
+  // Calculate unread count and expose to parent
   const unreadCount = useMemo(() => {
-    const count = notifications.filter(
-      (notification) => !notification.read
-    ).length;
+    // If we have notifications loaded, calculate from them
+    if (Array.isArray(notifications) && notifications.length > 0) {
+      const count = notifications.filter(
+        (notification) => notification && !notification.read
+      ).length;
 
-    if (onUnreadCountChange && typeof onUnreadCountChange === "function") {
-      onUnreadCountChange(count);
+      // Update parent IMMEDIATELY when we have fresh data
+      if (onUnreadCountChange && typeof onUnreadCountChange === "function") {
+        // Call on next tick to avoid React state update conflicts
+        setTimeout(() => {
+          onUnreadCountChange(count);
+        }, 0);
+      }
+
+      return count;
     }
 
-    return count;
-  }, [notifications, onUnreadCountChange]);
+    // Otherwise use the existing count passed from parent
+    return existingUnreadCount || 0;
+  }, [notifications, existingUnreadCount, onUnreadCountChange]);
 
-  // Fetch current user ID and Firebase ID
-  useEffect(() => {
-    const fetchUserIds = async () => {
-      try {
-        if (userId) {
-          setCurrentUserId(userId);
-          await fetchUserName(userId);
-
-          // Get corresponding Firebase ID
-          const fetchedFirebaseId = await getFirebaseIdFromUserId(userId);
-          if (fetchedFirebaseId) {
-            setFirebaseUserId(fetchedFirebaseId);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching user IDs:", error);
-        setErrorMessage("Couldn't load user data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserIds();
-  }, [userId]);
-
-  // Fetch user's name from API
-  const fetchUserName = async (userId) => {
+  // Fetch user's name from API with caching - DEFINED FIRST
+  const fetchUserName = useCallback(async (userId) => {
     if (!userId) return;
+
+    // Check module cache first
+    if (usernameCache[userId]) {
+      setUsernames((prev) => ({
+        ...prev,
+        [userId]: usernameCache[userId],
+      }));
+      return;
+    }
 
     try {
       const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
       if (response) {
         const { firstName, lastName } = response;
-        setCurrentUserName(`${firstName} ${lastName}`);
+        const fullName = `${firstName} ${lastName}`;
 
-        // Also add to usernames cache
+        // Add to both state and module cache
         setUsernames((prev) => ({
           ...prev,
-          [userId]: `${firstName} ${lastName}`,
+          [userId]: fullName,
         }));
+
+        usernameCache[userId] = fullName;
+
+        // Update local storage cache
+        try {
+          const cachedUsernames =
+            localStorage.getItem("notification_usernames") || "{}";
+          const parsed = JSON.parse(cachedUsernames);
+          parsed[userId] = fullName;
+          localStorage.setItem(
+            "notification_usernames",
+            JSON.stringify(parsed)
+          );
+        } catch (e) {
+          console.error("Error updating username cache", e);
+        }
       }
     } catch (error) {
       console.error("Error fetching user name:", error);
-    }
-  };
-
-  // Fetch notifications using app ID
-  const fetchNotificationsForAppId = async () => {
-    if (!currentUserId) return [];
-
-    try {
-      const q = query(
-        collection(FIREBASE_DB, "notifications"),
-        where("receiverId", "==", currentUserId.toString()),
-        orderBy("createdAt", "desc")
-      );
-
-      const querySnapshot = await getDocs(q);
-      const fetchedNotifications = [];
-
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        fetchedNotifications.push({
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || new Date(),
-        });
-      });
-
-      return fetchedNotifications;
-    } catch (error) {
-      console.error("Error fetching notifications for app ID:", error);
-      return [];
-    }
-  };
-
-  // Fetch notifications using Firebase ID
-  const fetchNotificationsForFirebaseId = async () => {
-    if (!firebaseUserId) return [];
-
-    try {
-      const q = query(
-        collection(FIREBASE_DB, "notifications"),
-        where("receiverId", "==", firebaseUserId),
-        orderBy("createdAt", "desc")
-      );
-
-      const querySnapshot = await getDocs(q);
-      const fetchedNotifications = [];
-
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        fetchedNotifications.push({
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || new Date(),
-        });
-      });
-
-      return fetchedNotifications;
-    } catch (error) {
-      console.error("Error fetching notifications for Firebase ID:", error);
-      return [];
-    }
-  };
-
-  // Fetch all notifications from both sources
-  const fetchAllNotifications = async () => {
-    setLoading(true);
-
-    try {
-      // Fetch from both sources
-      const [appNotifications, fbNotifications] = await Promise.all([
-        fetchNotificationsForAppId(),
-        fetchNotificationsForFirebaseId(),
-      ]);
-
-      // Merge notifications, handling duplicates
-      const notificationMap = new Map();
-
-      // Process all notifications
-      [...appNotifications, ...fbNotifications].forEach((notification) => {
-        notificationMap.set(notification.id, notification);
-      });
-
-      // Convert map to array and sort by date
-      const mergedNotifications = Array.from(notificationMap.values()).sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
-
-      setNotifications(mergedNotifications);
-
-      // Fetch sender names
-      mergedNotifications.forEach((notification) => {
-        if (notification.senderId) {
-          fetchSenderUsername(notification.senderId);
-        }
-      });
-    } catch (error) {
-      console.error("Error fetching all notifications:", error);
-      setErrorMessage("Couldn't load notifications");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch sender username
-  const fetchSenderUsername = async (senderId) => {
-    // Prevent duplicate fetches
-    if (
-      !senderId ||
-      fetchedUserIds.current.has(senderId) ||
-      usernames[senderId]
-    )
-      return;
-
-    // Mark as being fetched
-    fetchedUserIds.current.add(senderId);
-
-    try {
-      const response = await ApiHandler.get(`/UserDetails/userId/${senderId}`);
-      if (response) {
-        const { firstName, lastName } = response;
-        setUsernames((prev) => ({
-          ...prev,
-          [senderId]: `${firstName} ${lastName}`,
-        }));
-      }
-    } catch (error) {
-      // Add fallback name when API fails
+      // Use fallback name
+      const fallbackName = `User ${userId.substring(0, 4)}`;
       setUsernames((prev) => ({
         ...prev,
-        [senderId]: `User ${senderId.substring(0, 4)}`,
+        [userId]: fallbackName,
       }));
+      usernameCache[userId] = fallbackName;
     }
-  };
+  }, []);
 
-  // Listen for notifications from Firebase for both IDs
+  // Fetch sender username with debouncing - DEFINED SECOND
+  const fetchSenderUsername = useCallback(
+    (senderId) => {
+      if (
+        !senderId ||
+        fetchedUserIds.current.has(senderId) ||
+        usernames[senderId]
+      )
+        return;
+
+      fetchedUserIds.current.add(senderId);
+      fetchUserName(senderId);
+    },
+    [usernames, fetchUserName]
+  );
+
+  // Helper function to handle navigation - DEFINED THIRD
+  const handleNavigation = useCallback(
+    (notification) => {
+      if (!notification.data) return;
+
+      const navigate = navigateFunction || (() => {});
+
+      switch (notification.data.action) {
+        case "view_agreement":
+          navigate(`/landlord/booking/${notification.data.agreementId}`);
+          break;
+        case "booking_request":
+          navigate(`/landlord/booking/${notification.data.bookingId}`);
+          break;
+        case "property_update":
+          navigate(`/landlord/property/${notification.data.propertyId}`);
+          break;
+        case "payment_received":
+          navigate(`/landlord/payment/${notification.data.paymentId}`);
+          break;
+        case "view_chat":
+          navigate(`/landlord/chat/${notification.data.chatId}`);
+          break;
+        default:
+          if (notification.data.route) {
+            navigate(notification.data.route);
+          }
+      }
+    },
+    [navigateFunction]
+  );
+
+  // Try to load from persistent cache first
   useEffect(() => {
-    if (!currentUserId && !firebaseUserId) {
-      return () => {};
+    setShowContent(false);
+    setLoading(true);
+
+    // First try to get cached HTML from localStorage
+    const cachedHtml = localStorage.getItem(`notifications_html_${userId}`);
+    const cachedTimestamp = localStorage.getItem(
+      `notifications_html_timestamp_${userId}`
+    );
+    const currentTime = Date.now();
+
+    // Use cached HTML if available and fresh (less than 30 minutes old)
+    if (
+      cachedHtml &&
+      cachedTimestamp &&
+      currentTime - parseInt(cachedTimestamp) < 30 * 60 * 1000
+    ) {
+      document
+        .getElementById("notifications-container")
+        ?.setAttribute("data-cached", "true");
+
+      // Also get the cached raw data for interactive features
+      try {
+        const cachedData = localStorage.getItem(cacheKey);
+        if (cachedData) {
+          const { data } = JSON.parse(cachedData);
+          if (Array.isArray(data)) {
+            setNotifications(data);
+            cachedNotifications.current = data;
+
+            // Show immediately since we're using pre-rendered HTML
+            setLoading(false);
+            // Show with a tiny delay for smoother transition
+            setTimeout(() => setShowContent(true), 10);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Error loading from cache", e);
+      }
     }
 
-    let unsubscribeFuncs = [];
+    // If no cached HTML or expired, try to load from data cache
+    try {
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+        const { data, timestamp } = JSON.parse(cachedData);
+        // Use cache if less than 15 minutes old
+        if (timestamp && currentTime - timestamp < 15 * 60 * 1000) {
+          setNotifications(data);
 
-    const setupListener = async () => {
+          // Short delay to prevent flickering
+          loadingTimeoutRef.current = setTimeout(() => {
+            setLoading(false);
+            setShowContent(true);
+          }, 100);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Error loading from cache", e);
+    }
+
+    // If no cache or expired, we'll load from server (handled in another effect)
+  }, [cacheKey, userId]);
+
+  // Fetch and set up database data
+  useEffect(() => {
+    // Skip if we loaded from cache
+    if (showContent && !refreshing) return;
+
+    const fetchNotifications = async () => {
       try {
-        // Initial fetch of all notifications
-        await fetchAllNotifications();
+        // Get Firebase ID for current user
+        const firebaseId = await getFirebaseIdFromUserId(userId);
+        if (!firebaseId && !userId) {
+          setLoading(false);
+          setShowContent(true);
+          return;
+        }
 
-        // Set up listeners for both IDs
-        if (firebaseUserId) {
-          try {
-            const unsubscribeFb = listenForUserNotifications(
-              () => fetchAllNotifications(),
-              firebaseUserId
-            );
-            unsubscribeFuncs.push(unsubscribeFb);
-          } catch (error) {
-            console.error("Error setting up Firebase ID listener:", error);
+        // Create a combined query with 'in' operator for better performance
+        const receiverIds = [];
+        if (firebaseId) {
+          receiverIds.push(firebaseId);
+          // Cache for future use
+          localStorage.setItem(`firebase_id_${userId}`, firebaseId);
+        }
+
+        if (userId) {
+          receiverIds.push(userId.toString());
+          // Also try numeric ID if string is provided
+          if (!isNaN(userId)) {
+            receiverIds.push(Number(userId));
           }
         }
 
-        if (currentUserId) {
-          try {
-            const unsubscribeApp = listenForUserNotifications(
-              () => fetchAllNotifications(),
-              currentUserId.toString()
-            );
-            unsubscribeFuncs.push(unsubscribeApp);
-          } catch (error) {
-            console.error("Error setting up App ID listener:", error);
+        // Single optimized query with increased limit
+        const notificationsQuery = query(
+          collection(FIREBASE_DB, "notifications"),
+          where("receiverId", "in", receiverIds),
+          orderBy("createdAt", "desc"),
+          limit(100)
+        );
+
+        // Fetch all notifications at once (no real-time updates needed)
+        const snapshot = await getDocs(notificationsQuery);
+
+        // Process all docs at once
+        const allNotifications = [];
+        const processedIds = new Set();
+
+        snapshot.docs.forEach((doc) => {
+          const id = doc.id;
+
+          // Skip if already processed (deduplication)
+          if (processedIds.has(id)) return;
+          processedIds.add(id);
+
+          const data = doc.data();
+          const notification = {
+            id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.() || new Date(),
+          };
+
+          // Check if sender ID is present, fetch username
+          if (notification.senderId) {
+            fetchSenderUsername(notification.senderId);
           }
+
+          allNotifications.push(notification);
+        });
+
+        // Sort all notifications
+        allNotifications.sort(
+          (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+        );
+
+        // Update state with all notifications at once
+        setNotifications(allNotifications);
+
+        // Update cache with data
+        try {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              data: allNotifications,
+              timestamp: Date.now(),
+            })
+          );
+        } catch (e) {
+          console.error("Error caching notifications", e);
         }
+
+        // After a small delay, show everything
+        setTimeout(() => {
+          setLoading(false);
+          setRefreshing(false);
+          setShowContent(true);
+
+          // Once rendered, save the HTML for even faster future loads
+          setTimeout(() => {
+            const container = document.getElementById("notifications-list");
+            if (container) {
+              try {
+                localStorage.setItem(
+                  `notifications_html_${userId}`,
+                  container.innerHTML
+                );
+                localStorage.setItem(
+                  `notifications_html_timestamp_${userId}`,
+                  Date.now().toString()
+                );
+              } catch (e) {
+                console.error("Error caching notification HTML", e);
+              }
+            }
+          }, 500);
+        }, 100);
       } catch (error) {
-        console.error("Error setting up notification listeners:", error);
-        setErrorMessage("Failed to set up notification listeners");
+        console.error("Error fetching notifications:", error);
+        setErrorMessage("Failed to load notifications");
         setLoading(false);
+        setRefreshing(false);
+        setShowContent(true);
       }
     };
 
-    setupListener();
+    fetchNotifications();
 
-    // Clean up listeners when component unmounts
     return () => {
-      unsubscribeFuncs.forEach((unsubscribe) => {
-        try {
-          if (typeof unsubscribe === "function") {
-            unsubscribe();
-          }
-        } catch (error) {
-          console.error("Error unsubscribing from notifications:", error);
-        }
-      });
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
     };
-  }, [currentUserId, firebaseUserId]);
+  }, [cacheKey, userId, refreshing, showContent, fetchSenderUsername]);
 
-  // Get notification type icon and color
-  const getNotificationTypeInfo = (notification) => {
+  // Handle refresh - force fetch new notifications
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    setErrorMessage(null);
+    setShowContent(false);
+
+    // Clear the caches to force a fresh load
+    try {
+      localStorage.removeItem(cacheKey);
+      localStorage.removeItem(`notifications_html_${userId}`);
+      localStorage.removeItem(`notifications_html_timestamp_${userId}`);
+    } catch (e) {
+      console.error("Error clearing notification cache", e);
+    }
+
+    // Safety timeout
+    setTimeout(() => {
+      if (refreshing) {
+        setRefreshing(false);
+        setShowContent(true);
+      }
+    }, 10000); // 10 seconds max
+  }, [cacheKey, refreshing, userId]);
+
+  // Mark all notifications as read
+  const markAllAsRead = useCallback(() => {
+    if (!notifications.length) return;
+
+    // Get unread notifications
+    const unreadNotifications = notifications.filter((n) => !n.read);
+    if (!unreadNotifications.length) return;
+
+    // Update UI immediately
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+
+    // Also update cache
+    try {
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        const updatedNotifications = parsed.data.map((n) => ({
+          ...n,
+          read: true,
+        }));
+
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify({
+            data: updatedNotifications,
+            timestamp: Date.now(),
+          })
+        );
+
+        // Update the HTML cache too
+        setTimeout(() => {
+          const container = document.getElementById("notifications-list");
+          if (container) {
+            try {
+              localStorage.setItem(
+                `notifications_html_${userId}`,
+                container.innerHTML
+              );
+              localStorage.setItem(
+                `notifications_html_timestamp_${userId}`,
+                Date.now().toString()
+              );
+            } catch (e) {
+              console.error("Error updating notification HTML cache", e);
+            }
+          }
+        }, 100);
+      }
+    } catch (e) {
+      console.error("Error updating notification cache", e);
+    }
+
+    // Mark each as read in database
+    Promise.all(
+      unreadNotifications.map((n) => markNotificationAsRead(n.id))
+    ).catch((error) => {
+      console.error("Error marking all notifications as read:", error);
+    });
+  }, [notifications, cacheKey, userId]);
+
+  // Handle notification click with optimistic update
+  const handleNotificationPress = useCallback(
+    (notification) => {
+      // Skip if already read
+      if (notification.read) {
+        handleNavigation(notification);
+        return;
+      }
+
+      // Update UI immediately (optimistic update)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
+      );
+
+      // Also update the cache
+      try {
+        const cachedData = localStorage.getItem(cacheKey);
+        if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          const updatedNotifications = parsed.data.map((n) =>
+            n.id === notification.id ? { ...n, read: true } : n
+          );
+
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              data: updatedNotifications,
+              timestamp: Date.now(),
+            })
+          );
+        }
+      } catch (e) {
+        console.error("Error updating notification cache", e);
+      }
+
+      // Mark as read in database
+      markNotificationAsRead(notification.id).catch((error) => {
+        console.error("Error marking notification as read:", error);
+
+        // If it fails, revert the optimistic update
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notification.id ? { ...n, read: false } : n
+          )
+        );
+      });
+
+      // Handle navigation
+      handleNavigation(notification);
+    },
+    [cacheKey, handleNavigation]
+  );
+
+  // Get notification type icon and color - memoized
+  const getNotificationTypeInfo = useCallback((notification) => {
     if (!notification.data || !notification.data.action) {
       return {
         icon: <FiBell size={14} />,
@@ -365,10 +601,10 @@ const NotificationPage = ({
           text: notification.data.action || "Notification",
         };
     }
-  };
+  }, []);
 
-  // Format relative time
-  const formatTimeAgo = (timestamp) => {
+  // Format relative time - memoized
+  const formatTimeAgo = useCallback((timestamp) => {
     if (!timestamp) return "";
 
     const now = new Date();
@@ -387,171 +623,212 @@ const NotificationPage = ({
       .getFullYear()
       .toString()
       .substr(-2)}`;
-  };
-
-  // Handle notification click
-  const handleNotificationPress = (notification) => {
-    // Update UI immediately
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
-    );
-
-    // Mark as read in database
-    markNotificationAsRead(notification.id).catch((error) => {
-      console.error("Error marking notification as read:", error);
-    });
-
-    // Handle navigation based on notification type
-    if (notification.data) {
-      const navigate = navigateFunction || (() => {});
-
-      switch (notification.data.action) {
-        case "view_agreement":
-          navigate(`/landlord/booking/${notification.data.agreementId}`);
-          break;
-        case "booking_request":
-          navigate(`/landlord/booking/${notification.data.bookingId}`);
-          break;
-        case "property_update":
-          navigate(`/landlord/property/${notification.data.propertyId}`);
-          break;
-        case "payment_received":
-          navigate(`/landlord/payment/${notification.data.paymentId}`);
-          break;
-        case "view_chat":
-          navigate(`/landlord/chat/${notification.data.chatId}`);
-          break;
-        default:
-          if (notification.data.route) {
-            navigate(notification.data.route);
-          }
-      }
-    }
-  };
+  }, []);
 
   return (
-    <div className="w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm">
-      {/* Header with unread count */}
+    <div className="w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm transition-all duration-300">
+      {/* Header with unread count and mark all as read button */}
       {unreadCount > 0 && (
-        <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 mb-2 rounded-md">
+        <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 mb-2 rounded-md flex items-center justify-between">
           <span className="text-sm font-medium text-blue-700 dark:text-blue-300 flex items-center">
             <FiBell size={14} className="mr-2 animate-pulse" />
             {unreadCount} new notification{unreadCount !== 1 ? "s" : ""}
           </span>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              markAllAsRead();
+            }}
+            className="text-xs flex items-center bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-1 rounded hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
+          >
+            <FiCheck size={12} className="mr-1" /> Mark all read
+          </button>
         </div>
       )}
 
       {/* Error Message */}
       {errorMessage && (
-        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-md mb-3">
-          <p className="flex items-center">
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-md mb-3 flex items-center justify-between">
+          <p className="flex items-center text-sm">
             <FiInfo size={14} className="mr-2" /> {errorMessage}
           </p>
+          <button
+            onClick={handleRefresh}
+            className="text-red-700 dark:text-red-300 underline text-sm flex items-center hover:text-red-800 transition-colors"
+          >
+            <FiRefreshCw
+              size={12}
+              className={`mr-1 ${refreshing ? "animate-spin" : ""}`}
+            />{" "}
+            Retry
+          </button>
         </div>
       )}
 
-      {/* Loading State */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="w-10 h-10 relative">
-            <div className="w-10 h-10 rounded-full border-3 border-blue-100 dark:border-blue-900/30"></div>
-            <div className="w-10 h-10 rounded-full border-t-3 border-blue-500 animate-spin absolute top-0 left-0"></div>
+      {/* Content with fixed height container */}
+      <div
+        id="notifications-container"
+        className="overflow-hidden transition-all duration-300 relative"
+        style={{ height: "250px" }}
+      >
+        {loading ? (
+          <div className="animate-pulse space-y-3 p-3">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="flex p-3 border border-gray-100 dark:border-gray-700 rounded-md"
+              >
+                <div className="h-10 w-1 bg-gray-200 dark:bg-gray-700 rounded-full mr-2"></div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="h-6 w-6 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                      <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    <div className="h-3 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                  </div>
+                  <div className="mt-2 flex justify-between">
+                    <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                    <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <p className="mt-3 text-gray-500 dark:text-gray-400 text-sm">
-            Loading notifications...
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Notifications List */}
-          {notifications.length > 0 ? (
-            <div className="max-h-[40vh] overflow-y-auto px-2 py-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-              {notifications.map((notification) => {
-                const { icon, color, textColor, lightBg, text } =
-                  getNotificationTypeInfo(notification);
+        ) : (
+          <>
+            {/* Refreshing indicator */}
+            {refreshing && (
+              <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/10 text-xs text-blue-700 dark:text-blue-300 flex items-center justify-center">
+                <div className="animate-spin mr-2 h-3 w-3 border-t-2 border-blue-500 rounded-full"></div>
+                Refreshing...
+              </div>
+            )}
 
-                return (
-                  <div
-                    key={notification.id}
-                    onClick={() => handleNotificationPress(notification)}
-                    className={`p-3 rounded-md border ${
-                      notification.read
-                        ? "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600"
-                        : `${lightBg} dark:bg-blue-900/10 border-blue-100 dark:border-blue-800 hover:border-blue-200 dark:hover:border-blue-700`
-                    } hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 cursor-pointer relative group`}
-                  >
-                    {/* Side color indicator */}
-                    <div
-                      className={`absolute left-0 top-0 bottom-0 w-1 ${color} rounded-tl-md rounded-bl-md`}
-                    ></div>
+            {/* Notifications List */}
+            {notifications.length > 0 ? (
+              <div
+                className="h-full overflow-y-auto px-2 py-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent transition-all duration-300 relative"
+                style={{ willChange: "contents", contain: "content" }}
+              >
+                {/* This wrapper controls visibility */}
+                <div
+                  id="notifications-list"
+                  className={`space-y-2 transition-opacity duration-300 ease-in-out ${
+                    showContent ? "opacity-100" : "opacity-0"
+                  }`}
+                >
+                  {notifications.map((notification) => {
+                    const { icon, color, textColor, lightBg, text } =
+                      getNotificationTypeInfo(notification);
 
-                    <div className="pl-2">
-                      {/* Header with title and time */}
-                      <div className="flex justify-between items-center mb-1">
-                        <div className="flex items-center space-x-2">
-                          <div
-                            className={`rounded-full p-1 ${lightBg} dark:bg-opacity-20`}
-                          >
-                            <span className={`${textColor}`}>{icon}</span>
+                    return (
+                      <div
+                        key={notification.id}
+                        onClick={() => handleNotificationPress(notification)}
+                        className={`p-3 rounded-md border transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer relative group ${
+                          notification.read
+                            ? "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600 hover:shadow-sm"
+                            : `${lightBg} dark:bg-blue-900/10 border-blue-100 dark:border-blue-800 hover:border-blue-200 dark:hover:border-blue-700 hover:shadow-md`
+                        }`}
+                      >
+                        {/* Side color indicator */}
+                        <div
+                          className={`absolute left-0 top-0 bottom-0 w-1 ${color} rounded-tl-md rounded-bl-md transition-all duration-300`}
+                        ></div>
+
+                        <div className="pl-2">
+                          {/* Header with title and time */}
+                          <div className="flex justify-between items-center mb-1">
+                            <div className="flex items-center space-x-2">
+                              <div
+                                className={`rounded-full p-1 ${lightBg} dark:bg-opacity-20 transition-colors`}
+                              >
+                                <span className={`${textColor}`}>{icon}</span>
+                              </div>
+                              <h3 className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-1">
+                                {notification.title}
+                              </h3>
+                            </div>
+
+                            <div className="flex items-center space-x-1">
+                              {!notification.read && (
+                                <FiCircle
+                                  size={6}
+                                  className="text-blue-500 mr-1"
+                                />
+                              )}
+                              <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center whitespace-nowrap">
+                                <FiClock size={10} className="mr-1" />
+                                {formatTimeAgo(notification.createdAt)}
+                              </span>
+                            </div>
                           </div>
-                          <h3 className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-1">
-                            {notification.title}
-                          </h3>
-                        </div>
 
-                        <div className="flex items-center space-x-1">
-                          {!notification.read && (
-                            <FiCircle size={6} className="text-blue-500" />
-                          )}
-                          <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center">
-                            <FiClock size={10} className="mr-1" />
-                            {formatTimeAgo(notification.createdAt)}
-                          </span>
-                        </div>
-                      </div>
+                          {/* Body */}
+                          <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 ml-8 transition-colors">
+                            {notification.body}
+                          </p>
 
-                      {/* Body */}
-                      <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 ml-8">
-                        {notification.body}
-                      </p>
-
-                      {/* Footer */}
-                      <div className="flex justify-between items-center mt-2 ml-8">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${lightBg} dark:bg-opacity-20 ${textColor} font-medium`}
-                        >
-                          {text}
-                        </span>
-
-                        {notification.senderId &&
-                          usernames[notification.senderId] && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {/* From: {usernames[notification.senderId]} */}
+                          {/* Footer */}
+                          <div className="flex justify-between items-center mt-2 ml-8">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${lightBg} dark:bg-opacity-20 ${textColor} font-medium transition-colors`}
+                            >
+                              {text}
                             </span>
-                          )}
+                          </div>
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+
+                {/* Loading overlay - shown when content is being prepared */}
+                {!showContent && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-800/80 z-10">
+                    <div className="text-center">
+                      <div className="w-10 h-10 mx-auto mb-3 border-4 border-t-blue-500 border-blue-100 dark:border-blue-900 rounded-full animate-spin"></div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Loading notifications...
+                      </p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            // Empty state
-            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-              <FiBell
-                size={24}
-                className="mb-3 text-gray-300 dark:text-gray-600"
-              />
-              <p className="text-gray-600 dark:text-gray-300">
-                No notifications yet
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                You'll see your notifications here when they arrive
-              </p>
-            </div>
-          )}
-        </>
-      )}
+                )}
+              </div>
+            ) : (
+              // Empty state
+              <div className="flex flex-col items-center justify-center h-full px-4 text-center transition-all duration-300">
+                <FiBell
+                  size={24}
+                  className="mb-3 text-gray-300 dark:text-gray-600"
+                />
+                <p className="text-gray-600 dark:text-gray-300">
+                  No notifications yet
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  You'll see your notifications here when they arrive
+                </p>
+                {/* Refresh button for empty state */}
+                <button
+                  onClick={handleRefresh}
+                  className="mt-4 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center transition-colors"
+                >
+                  <FiRefreshCw
+                    className={`mr-1 ${refreshing ? "animate-spin" : ""}`}
+                  />
+                  Refresh
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

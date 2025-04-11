@@ -6,6 +6,26 @@ import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
 import ApiHandler from "../../api/ApiHandler.js";
 import { useAuth } from "../../context/AuthContext.js";
 
+const isTokenExpired = (token) => {
+  if (!token) return false; // No token doesn't mean expired - it could be first visit
+
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload));
+
+    // Check if token has expiration claim
+    if (!decoded.exp) return false;
+
+    // Compare expiration timestamp with current time
+    const currentTime = Math.floor(Date.now() / 1000);
+    return decoded.exp < currentTime;
+  } catch (error) {
+    console.error("Error checking token expiration:", error);
+    // Don't consider parsing errors as expired sessions
+    return false;
+  }
+};
+
 const getUserRoleFromToken = (token) => {
   if (!token) return null;
 
@@ -25,7 +45,7 @@ const getUserRoleFromToken = (token) => {
 
 export const LoginForm = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // Add this to detect navigation changes
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setSubmitting] = useState(false);
@@ -34,6 +54,7 @@ export const LoginForm = () => {
   const [error, setError] = useState("");
   const { currentUser, loading } = useAuth();
   const [loginAttempt, setLoginAttempt] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Add a ref to track if logout has already been performed
   const logoutPerformedRef = useRef(false);
@@ -45,6 +66,61 @@ export const LoginForm = () => {
   const pageLoadTime = useRef(Date.now());
   // Track server restart state
   const [isServerRestart, setIsServerRestart] = useState(false);
+
+  // Check for expired session on component mount - but only if explicitly redirected
+  useEffect(() => {
+    // Only check for session expiration if redirected from another page
+    // or if there's a specific expired query parameter
+    const params = new URLSearchParams(location.search);
+    const expiredParam = params.get("sessionExpired");
+    const redirectedFrom = params.get("from");
+
+    // Clear the URL parameters without triggering a full page reload
+    if (expiredParam || redirectedFrom) {
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+
+    // Only show expired message if explicitly redirected with expired parameter
+    // or we're coming from another page with an expired token
+    if (expiredParam === "true") {
+      setSessionExpired(true);
+      setError("Your session has expired. Please sign in again.");
+
+      // Clean up any stale auth data
+      localStorage.removeItem("jwtToken");
+      localStorage.removeItem("user");
+      ApiHandler.removeToken();
+
+      // Sign out from Firebase if needed
+      if (currentUser && !logoutPerformedRef.current) {
+        logoutPerformedRef.current = true;
+        signOut(FIREBASE_AUTH).catch((error) => {
+          console.error("Error signing out after session expiration:", error);
+        });
+      }
+    }
+    // Check if token is expired and we were redirected from another page
+    else if (redirectedFrom) {
+      const token = localStorage.getItem("jwtToken");
+      if (isTokenExpired(token)) {
+        setSessionExpired(true);
+        setError("Your session has expired. Please sign in again.");
+
+        // Clean up any stale auth data
+        localStorage.removeItem("jwtToken");
+        localStorage.removeItem("user");
+        ApiHandler.removeToken();
+
+        if (currentUser && !logoutPerformedRef.current) {
+          logoutPerformedRef.current = true;
+          signOut(FIREBASE_AUTH).catch((err) => {
+            console.error("Error signing out on expired token:", err);
+          });
+        }
+      }
+    }
+  }, [location.search, currentUser]);
 
   // Check for navigation to login via history
   useEffect(() => {
@@ -106,6 +182,15 @@ export const LoginForm = () => {
           const jwtToken = localStorage.getItem("jwtToken");
           if (!jwtToken) return; // No token, can't redirect
 
+          // Don't redirect if token is expired
+          if (isTokenExpired(jwtToken)) {
+            // Silently clean up without showing error message
+            localStorage.removeItem("jwtToken");
+            localStorage.removeItem("user");
+            ApiHandler.removeToken();
+            return;
+          }
+
           // Get user role and redirect
           const userRole = getUserRoleFromToken(jwtToken);
 
@@ -118,6 +203,7 @@ export const LoginForm = () => {
           }
         } catch (error) {
           console.error("Error during restart redirect:", error);
+          // Silently handle errors without showing expired session message
         }
       }
     };
@@ -186,6 +272,7 @@ export const LoginForm = () => {
     setError("");
     setEmailError("");
     setPasswordError("");
+    setSessionExpired(false);
 
     // Validation
     if (!email.trim() || !password.trim()) {
@@ -286,7 +373,13 @@ export const LoginForm = () => {
           errorMessage = `Firebase error: ${error.message}`;
         }
       } else if (error.response) {
-        errorMessage = error.response.data.message || errorMessage;
+        // Check for session expiration specifically
+        if (error.response.status === 401) {
+          errorMessage =
+            "Authentication failed. Please check your credentials.";
+        } else {
+          errorMessage = error.response.data.message || errorMessage;
+        }
       } else if (error.request) {
         errorMessage = "Network error. Please try again.";
       }
@@ -308,6 +401,12 @@ export const LoginForm = () => {
         <h1 className="px-10 py-8 text-2xl font-semibold text-center border-b">
           Sign in to your account
         </h1>
+        {sessionExpired && (
+          <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 mx-10 mt-5">
+            <p className="font-medium">Session Expired</p>
+            <p>Your session has expired. Please sign in again to continue.</p>
+          </div>
+        )}
         <form className="bg-white px-10 py-10" onSubmit={handleSignin}>
           <div>
             <label className="text-sm font-medium" htmlFor="email">

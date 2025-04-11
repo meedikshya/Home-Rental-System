@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
@@ -16,12 +16,10 @@ import {
   FaSpinner,
   FaInfoCircle,
   FaClock,
-  FaBuilding,
   FaSearch,
   FaMapMarkerAlt,
   FaMoneyBillWave,
   FaFileDownload,
-  FaChevronRight,
   FaHome,
 } from "react-icons/fa";
 import Agreement from "./Agreement.js";
@@ -33,6 +31,7 @@ const AgreementList = () => {
   const [landlordId, setLandlordId] = useState(null);
   const [agreements, setAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState(null);
   const [processingIds, setProcessingIds] = useState([]);
   const [downloadingIds, setDownloadingIds] = useState([]);
@@ -47,11 +46,54 @@ const AgreementList = () => {
   // Filter state
   const [activeTab, setActiveTab] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
-  const [isFilterVisible, setIsFilterVisible] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
+
+  // Format date to display nicely
+  const formatDate = (dateString) => {
+    const options = { year: "numeric", month: "long", day: "numeric" };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+
+  // Get auth token - memoized to avoid recreation
+  const getAuthToken = useCallback(async () => {
+    return await FIREBASE_AUTH.currentUser?.getIdToken(true);
+  }, []);
+
+  // Load cached data to improve performance
+  useEffect(() => {
+    // Load cached data from localStorage if available
+    const cachedRenterNames = localStorage.getItem("cachedRenterNames");
+    const cachedPropertyDetails = localStorage.getItem("cachedPropertyDetails");
+    const cachedAgreements = localStorage.getItem("cachedAgreements");
+
+    if (cachedRenterNames) {
+      try {
+        setRenterNames(JSON.parse(cachedRenterNames));
+      } catch (e) {
+        console.error("Error parsing cached renter names:", e);
+      }
+    }
+
+    if (cachedPropertyDetails) {
+      try {
+        setPropertyDetails(JSON.parse(cachedPropertyDetails));
+      } catch (e) {
+        console.error("Error parsing cached property details:", e);
+      }
+    }
+
+    if (cachedAgreements) {
+      try {
+        setAgreements(JSON.parse(cachedAgreements));
+        setLoading(false);
+      } catch (e) {
+        console.error("Error parsing cached agreements:", e);
+      }
+    }
+  }, []);
 
   // Get user's landlord ID
   useEffect(() => {
@@ -59,16 +101,25 @@ const AgreementList = () => {
       FIREBASE_AUTH,
       async (currentUser) => {
         if (currentUser) {
-          const userId = await getUserDataFromFirebase();
-          if (userId) {
-            setLandlordId(userId);
-          } else {
-            toast.error("Failed to fetch landlord ID.");
+          try {
+            const userId = await getUserDataFromFirebase();
+            if (userId) {
+              setLandlordId(userId);
+            } else {
+              toast.error("Failed to fetch landlord ID.");
+              setError("Could not verify your identity. Please try again.");
+              setLoading(false);
+            }
+          } catch (err) {
+            console.error("Error getting user data:", err);
+            setError("Authentication error. Please try logging in again.");
+            setLoading(false);
           }
         } else {
           setLandlordId(null);
+          setError("You must be logged in to view agreements.");
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
@@ -77,66 +128,29 @@ const AgreementList = () => {
 
   // Fetch agreements when landlord ID is available
   useEffect(() => {
-    const fetchAgreements = async () => {
-      if (!landlordId) return;
+    if (!landlordId) return;
 
+    const fetchAgreements = async () => {
       try {
         setLoading(true);
 
-        const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
-        const response = await ApiHandler.get(
-          `/Agreements/Landlord/${landlordId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const token = await getAuthToken();
+        if (!token) {
+          throw new Error("Authentication token not available");
+        }
 
-        console.log("Agreements fetched:", response);
-        setAgreements(response || []);
+        // Check if we need to refresh data (every 5 minutes)
+        const lastFetch = localStorage.getItem("lastAgreementFetch");
+        const now = Date.now();
+        const shouldRefresh =
+          !lastFetch || now - parseInt(lastFetch) > 5 * 60 * 1000;
 
-        // Collect unique renter IDs for name fetching
-        const renterIds = [
-          ...new Set(response.map((agreement) => agreement.renterId)),
-        ];
-        fetchRenterNames(renterIds);
+        let response;
 
-        // Collect booking IDs to fetch property details
-        const bookingIds = [
-          ...new Set(response.map((agreement) => agreement.bookingId)),
-        ];
-        fetchPropertyDetails(bookingIds);
-      } catch (err) {
-        console.error("Error fetching agreements:", err);
-        setError("Failed to load your lease agreements");
-        toast.error("Could not load agreements.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (landlordId) {
-      fetchAgreements();
-    }
-  }, [landlordId]);
-
-  // Reset current page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, searchTerm]);
-
-  // Fetch property details for agreements
-  const fetchPropertyDetails = async (bookingIds) => {
-    try {
-      const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
-      const detailsMap = {};
-
-      // Fetch property details for each booking
-      const fetchPromises = bookingIds.map(async (bookingId) => {
-        try {
-          const bookingResponse = await ApiHandler.get(
-            `/Bookings/${bookingId}`,
+        if (shouldRefresh) {
+          // Fetch new data if needed
+          response = await ApiHandler.get(
+            `/Agreements/Landlord/${landlordId}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -144,14 +158,108 @@ const AgreementList = () => {
             }
           );
 
-          if (bookingResponse && bookingResponse.propertyId) {
-            // Now fetch the property details
-            const propertyResponse = await ApiHandler.get(
-              `/Properties/${bookingResponse.propertyId}`,
+          // Cache the response
+          localStorage.setItem(
+            "cachedAgreements",
+            JSON.stringify(response || [])
+          );
+          localStorage.setItem("lastAgreementFetch", now.toString());
+
+          console.log("Fresh agreements fetched:", response);
+          setAgreements(response || []);
+        } else {
+          // Use cached data and show it immediately
+          const cachedData = localStorage.getItem("cachedAgreements");
+          if (cachedData) {
+            response = JSON.parse(cachedData);
+            console.log("Using cached agreements");
+          } else {
+            // Fallback to fetch if cache is missing
+            response = await ApiHandler.get(
+              `/Agreements/Landlord/${landlordId}`,
               {
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+              }
+            );
+            localStorage.setItem(
+              "cachedAgreements",
+              JSON.stringify(response || [])
+            );
+            console.log("Fallback agreements fetched:", response);
+          }
+          setAgreements(response || []);
+        }
+
+        // After main data is loaded, show the UI
+        setLoading(false);
+
+        // Now fetch secondary data in the background
+        if (response && response.length > 0) {
+          // Extract IDs for parallel fetching
+          const renterIds = [
+            ...new Set(response.map((agreement) => agreement.renterId)),
+          ];
+          const bookingIds = [
+            ...new Set(response.map((agreement) => agreement.bookingId)),
+          ];
+
+          // Start both fetch operations in parallel
+          Promise.all([
+            fetchRenterNames(renterIds, token),
+            fetchPropertyDetails(bookingIds, token),
+          ]).finally(() => {
+            setInitialLoad(false);
+          });
+        } else {
+          setInitialLoad(false);
+        }
+      } catch (err) {
+        console.error("Error fetching agreements:", err);
+        setError("Failed to load your lease agreements");
+        toast.error("Could not load agreements.");
+        setLoading(false);
+        setInitialLoad(false);
+      }
+    };
+
+    fetchAgreements();
+  }, [landlordId, getAuthToken]);
+
+  // Reset current page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchTerm]);
+
+  // Fetch property details for agreements - optimized to run in parallel
+  const fetchPropertyDetails = async (bookingIds, existingToken = null) => {
+    try {
+      const token = existingToken || (await getAuthToken());
+      const detailsMap = { ...propertyDetails }; // Start with existing data
+
+      // Skip already loaded properties - only fetch missing ones
+      const missingIds = bookingIds.filter((id) => !detailsMap[id]);
+
+      if (missingIds.length === 0) return detailsMap;
+
+      // Create a promise for each booking
+      const fetchPromises = missingIds.map(async (bookingId) => {
+        try {
+          // Fetch booking and property in parallel when possible
+          const bookingResponse = await ApiHandler.get(
+            `/Bookings/${bookingId}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          if (bookingResponse && bookingResponse.propertyId) {
+            // Fetch property details
+            const propertyResponse = await ApiHandler.get(
+              `/Properties/${bookingResponse.propertyId}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
               }
             );
 
@@ -165,6 +273,9 @@ const AgreementList = () => {
                 price: propertyResponse.price,
                 kitchen: propertyResponse.kitchen,
               };
+
+              // Update state incrementally as properties load
+              setPropertyDetails({ ...detailsMap });
             }
           }
         } catch (error) {
@@ -175,29 +286,39 @@ const AgreementList = () => {
         }
       });
 
-      // Wait for all fetches to complete
+      // Execute all promises in parallel
       await Promise.all(fetchPromises);
-      setPropertyDetails(detailsMap);
+
+      // Save to localStorage for future visits
+      localStorage.setItem("cachedPropertyDetails", JSON.stringify(detailsMap));
+
+      // Final update with all data
+      setPropertyDetails({ ...detailsMap });
+      return detailsMap;
     } catch (error) {
       console.error("Error fetching property details:", error);
+      return propertyDetails;
     }
   };
 
-  // Fetch renter names for all agreements
-  const fetchRenterNames = async (renterIds) => {
+  // Fetch renter names for all agreements - optimized to run in parallel
+  const fetchRenterNames = async (renterIds, existingToken = null) => {
     try {
-      const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
-      const namesMap = {};
+      const token = existingToken || (await getAuthToken());
+      const namesMap = { ...renterNames }; // Start with existing data
 
-      // Fetch names for all renters in parallel
-      const fetchPromises = renterIds.map(async (renterId) => {
+      // Skip already loaded renter names - only fetch missing ones
+      const missingIds = renterIds.filter((id) => !namesMap[id]);
+
+      if (missingIds.length === 0) return namesMap;
+
+      // Create a promise for each renter
+      const fetchPromises = missingIds.map(async (renterId) => {
         try {
           const response = await ApiHandler.get(
             `/UserDetails/userId/${renterId}`,
             {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
+              headers: { Authorization: `Bearer ${token}` },
             }
           );
 
@@ -205,6 +326,9 @@ const AgreementList = () => {
             namesMap[renterId] = `${response.firstName} ${
               response.lastName || ""
             }`.trim();
+
+            // Update state incrementally as names load
+            setRenterNames({ ...namesMap });
           } else {
             namesMap[renterId] = "Unknown User";
           }
@@ -214,11 +338,18 @@ const AgreementList = () => {
         }
       });
 
-      // Wait for all name fetches to complete
+      // Execute all promises in parallel
       await Promise.all(fetchPromises);
-      setRenterNames(namesMap);
+
+      // Save to localStorage for future visits
+      localStorage.setItem("cachedRenterNames", JSON.stringify(namesMap));
+
+      // Final update with all data
+      setRenterNames({ ...namesMap });
+      return namesMap;
     } catch (error) {
       console.error("Error fetching renter names:", error);
+      return renterNames;
     }
   };
 
@@ -237,9 +368,7 @@ const AgreementList = () => {
         agreement,
         propertyDetails,
         getRenterName(agreement.renterId),
-        formatDate,
-        (id) => setDownloadingIds((prev) => [...prev, id]),
-        (id) => setDownloadingIds((prev) => prev.filter((item) => item !== id))
+        formatDate
       );
     } catch (error) {
       console.error("Error downloading agreement:", error);
@@ -261,7 +390,6 @@ const AgreementList = () => {
       const agreementToUpdate = agreements.find(
         (a) => a.agreementId === agreementId
       );
-
       if (!agreementToUpdate) {
         throw new Error("Agreement not found");
       }
@@ -279,62 +407,51 @@ const AgreementList = () => {
       };
 
       // Update agreement status
-      const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
+      const token = await getAuthToken();
       await ApiHandler.put(`/Agreements/${agreementId}`, updatePayload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Update local state
-      setAgreements((prev) =>
-        prev.map((agreement) =>
-          agreement.agreementId === agreementId
-            ? { ...agreement, status: "Approved" }
-            : agreement
-        )
+      // Update local state and cache
+      const updatedAgreements = agreements.map((agreement) =>
+        agreement.agreementId === agreementId
+          ? { ...agreement, status: "Approved" }
+          : agreement
       );
 
-      // SEND NOTIFICATION
+      setAgreements(updatedAgreements);
+      localStorage.setItem(
+        "cachedAgreements",
+        JSON.stringify(updatedAgreements)
+      );
+
+      // Send notification
       try {
         const property = propertyDetails[agreementToUpdate.bookingId] || {};
         const propertyAddress = property.address || "your requested property";
 
-        const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
         const renterResponse = await ApiHandler.get(
           `/Users/firebaseByUserId/${agreementToUpdate.renterId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
 
-        const renterFirebaseId = renterResponse;
+        if (renterResponse) {
+          const notificationData = {
+            propertyId: property.propertyId,
+            bookingId: agreementToUpdate.bookingId,
+            agreementId: agreementToUpdate.agreementId,
+            screen: "Agreement",
+            action: "view_agreement",
+            timestamp: new Date().toISOString(),
+          };
 
-        if (!renterFirebaseId) {
-          console.log("Could not find renter's Firebase ID");
-          return;
+          await sendNotificationToUser(
+            renterResponse,
+            "Agreement Approved",
+            `Your lease agreement for ${propertyAddress} has been approved.`,
+            notificationData
+          );
         }
-
-        const notificationTitle = "Agreement Approved";
-        const notificationBody = `Your lease agreement for ${propertyAddress} has been approved.`;
-
-        const additionalData = {
-          propertyId: property.propertyId,
-          bookingId: agreementToUpdate.bookingId,
-          agreementId: agreementToUpdate.agreementId,
-          screen: "Agreement",
-          action: "view_agreement",
-          timestamp: new Date().toISOString(),
-        };
-
-        await sendNotificationToUser(
-          renterFirebaseId,
-          notificationTitle,
-          notificationBody,
-          additionalData
-        );
       } catch (notificationError) {
         console.error("Error sending notification:", notificationError);
       }
@@ -358,13 +475,11 @@ const AgreementList = () => {
 
     try {
       setProcessingIds((prev) => [...prev, agreementId]);
-      console.log(`Rejecting agreement ${agreementId}...`);
 
       // Find agreement to update
       const agreementToUpdate = agreements.find(
         (a) => a.agreementId === agreementId
       );
-
       if (!agreementToUpdate) {
         throw new Error("Agreement not found");
       }
@@ -382,62 +497,51 @@ const AgreementList = () => {
       };
 
       // Update agreement status
-      const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
+      const token = await getAuthToken();
       await ApiHandler.put(`/Agreements/${agreementId}`, updatePayload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Update local state
-      setAgreements((prev) =>
-        prev.map((agreement) =>
-          agreement.agreementId === agreementId
-            ? { ...agreement, status: "Rejected" }
-            : agreement
-        )
+      // Update local state and cache
+      const updatedAgreements = agreements.map((agreement) =>
+        agreement.agreementId === agreementId
+          ? { ...agreement, status: "Rejected" }
+          : agreement
       );
 
-      // SEND NOTIFICATION
+      setAgreements(updatedAgreements);
+      localStorage.setItem(
+        "cachedAgreements",
+        JSON.stringify(updatedAgreements)
+      );
+
+      // Send notification
       try {
         const property = propertyDetails[agreementToUpdate.bookingId] || {};
         const propertyAddress = property.address || "your requested property";
 
-        const token = await FIREBASE_AUTH.currentUser?.getIdToken(true);
         const renterResponse = await ApiHandler.get(
           `/Users/firebaseByUserId/${agreementToUpdate.renterId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
 
-        const renterFirebaseId = renterResponse;
+        if (renterResponse) {
+          const notificationData = {
+            propertyId: property.propertyId,
+            bookingId: agreementToUpdate.bookingId,
+            agreementId: agreementToUpdate.agreementId,
+            screen: "Agreement",
+            action: "view_agreement",
+            timestamp: new Date().toISOString(),
+          };
 
-        if (!renterFirebaseId) {
-          console.log("Could not find renter's Firebase ID");
-          return;
+          await sendNotificationToUser(
+            renterResponse,
+            "Agreement Rejected",
+            `Your lease agreement for ${propertyAddress} has been rejected by the landlord.`,
+            notificationData
+          );
         }
-
-        const notificationTitle = "Agreement Rejected";
-        const notificationBody = `Your lease agreement for ${propertyAddress} has been rejected by the landlord.`;
-
-        const additionalData = {
-          propertyId: property.propertyId,
-          bookingId: agreementToUpdate.bookingId,
-          agreementId: agreementToUpdate.agreementId,
-          screen: "Agreement",
-          action: "view_agreement",
-          timestamp: new Date().toISOString(),
-        };
-
-        await sendNotificationToUser(
-          renterFirebaseId,
-          notificationTitle,
-          notificationBody,
-          additionalData
-        );
       } catch (notificationError) {
         console.error("Error sending notification:", notificationError);
       }
@@ -453,35 +557,19 @@ const AgreementList = () => {
     }
   };
 
-  // Format date to display nicely
-  const formatDate = (dateString) => {
-    const options = { year: "numeric", month: "long", day: "numeric" };
-    return new Date(dateString).toLocaleDateString(undefined, options);
-  };
-
-  // Get renter name from ID
-  const getRenterName = (renterId) => {
-    return renterNames[renterId] || "Loading...";
-  };
-
-  // Get property name from booking ID
+  // Helper functions
+  const getRenterName = (renterId) => renterNames[renterId] || "Loading...";
   const getPropertyName = (bookingId) => {
     const property = propertyDetails[bookingId] || {};
-    return property.title || "Unknown Property";
+    return property.title || "Loading...";
   };
-
-  // Get property address from booking ID
   const getPropertyAddress = (bookingId) => {
     const property = propertyDetails[bookingId] || {};
-    return property.address || "Unknown Location";
+    return property.address || "Loading...";
   };
 
-  // Handle search
-  const handleSearch = (e) => {
-    setSearchTerm(e.target.value);
-  };
-
-  // Reset filters
+  // Handle search and filters
+  const handleSearch = (e) => setSearchTerm(e.target.value);
   const resetFilters = () => {
     setActiveTab("All");
     setSearchTerm("");
@@ -576,6 +664,7 @@ const AgreementList = () => {
     return `${baseStyle} bg-white text-gray-600 border border-gray-200 hover:bg-gray-50`;
   };
 
+  // Render loading state
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[300px] bg-white rounded-lg shadow-sm">
@@ -585,6 +674,7 @@ const AgreementList = () => {
     );
   }
 
+  // Render error state
   if (error) {
     return (
       <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-red-700 my-4 shadow-sm">
@@ -602,6 +692,7 @@ const AgreementList = () => {
     );
   }
 
+  // Render empty state
   if (!agreements || agreements.length === 0) {
     return (
       <div className="text-center p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -618,6 +709,14 @@ const AgreementList = () => {
 
   return (
     <div className="space-y-4">
+      {/* Background loading indicator */}
+      {initialLoad && (
+        <div className="fixed bottom-4 right-4 bg-white py-2 px-4 rounded-md shadow-lg border border-gray-200 flex items-center z-50 animate-pulse">
+          <FaSpinner className="animate-spin text-[#20319D] mr-2" />
+          <span className="text-sm">Loading additional data...</span>
+        </div>
+      )}
+
       {/* Header with banner */}
       <div className="bg-gradient-to-r from-[#20319D] to-[#3448c5] text-white p-5 rounded-lg shadow-md">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center">
@@ -700,13 +799,18 @@ const AgreementList = () => {
         </div>
       </div>
 
-      {/* Agreement List - List view instead of grid */}
+      {/* Agreement List */}
       {filteredAgreements.length > 0 ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="divide-y divide-gray-200">
             {currentItems.map((agreement) => {
               const { bg, text, icon } = getStatusBadge(agreement.status);
               const property = propertyDetails[agreement.bookingId] || {};
+              const isPropertyLoading = !property.title;
+              const isRenterLoading = !renterNames[agreement.renterId];
+              const isDownloading = downloadingIds.includes(
+                agreement.agreementId
+              );
 
               return (
                 <div
@@ -725,14 +829,25 @@ const AgreementList = () => {
                       <div className="flex items-start mb-3 md:mb-0 flex-grow">
                         <div className="flex-shrink-0 mr-3">
                           <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                            <FaHome className="text-[#20319D] text-lg" />
+                            {isPropertyLoading ? (
+                              <FaSpinner className="animate-spin text-[#20319D] text-lg" />
+                            ) : (
+                              <FaHome className="text-[#20319D] text-lg" />
+                            )}
                           </div>
                         </div>
 
                         <div>
                           <div className="flex items-center mb-1">
                             <h3 className="font-medium text-base text-gray-800 mr-2">
-                              {getPropertyName(agreement.bookingId)}
+                              {isPropertyLoading ? (
+                                <span className="inline-flex items-center">
+                                  <FaSpinner className="animate-spin mr-1 text-gray-400 text-sm" />
+                                  Loading property...
+                                </span>
+                              ) : (
+                                getPropertyName(agreement.bookingId)
+                              )}
                             </h3>
                             <span
                               className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${bg} ${text}`}
@@ -743,13 +858,25 @@ const AgreementList = () => {
 
                           <p className="text-sm text-gray-600 mb-1 flex items-center">
                             <FaMapMarkerAlt className="mr-1.5 text-gray-400" />
-                            {getPropertyAddress(agreement.bookingId)}
+                            {isPropertyLoading ? (
+                              <span className="text-gray-400">
+                                Loading address...
+                              </span>
+                            ) : (
+                              getPropertyAddress(agreement.bookingId)
+                            )}
                           </p>
 
                           <div className="flex flex-wrap gap-x-4 mt-2 text-xs text-gray-600">
                             <span className="flex items-center">
                               <FaUserAlt className="mr-1.5 text-blue-500" />
-                              {getRenterName(agreement.renterId)}
+                              {isRenterLoading ? (
+                                <span className="text-gray-400">
+                                  Loading renter...
+                                </span>
+                              ) : (
+                                getRenterName(agreement.renterId)
+                              )}
                             </span>
 
                             <span className="flex items-center">
@@ -827,12 +954,14 @@ const AgreementList = () => {
 
                         <button
                           onClick={() => handlePdfDownload(agreement)}
-                          disabled={downloadingIds.includes(
-                            agreement.agreementId
-                          )}
+                          disabled={
+                            isDownloading ||
+                            isPropertyLoading ||
+                            isRenterLoading
+                          }
                           className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors flex items-center"
                         >
-                          {downloadingIds.includes(agreement.agreementId) ? (
+                          {isDownloading ? (
                             <div className="animate-spin h-4 w-4 mr-1.5 border-2 border-white border-t-transparent rounded-full"></div>
                           ) : (
                             <FaFileDownload className="mr-1.5" />
@@ -847,7 +976,7 @@ const AgreementList = () => {
             })}
           </div>
 
-          {/* Show message when no agreements match the filter */}
+          {/* No matches message */}
           {currentItems.length === 0 && (
             <div className="text-center p-6">
               <div className="w-12 h-12 bg-gray-100 mx-auto rounded-full flex items-center justify-center mb-3">
