@@ -15,8 +15,12 @@ import {
   Timestamp,
   getDocs,
   getDoc,
+  getFirestore,
+  or,
 } from "firebase/firestore";
 import { FIREBASE_DB, FIREBASE_AUTH } from "./firebaseConfig";
+import { getAuth } from "firebase/auth";
+import { getUserDataFromFirebase } from "./context/AuthContext";
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -132,7 +136,7 @@ export const sendNotificationToUser = async (
       body,
       senderId,
       receiverId,
-      { ...additionalData, screen: "Notification" }
+      { ...additionalData, screen: additionalData.screen || "Notification" }
     );
 
     console.log(`Notification sent from ${senderId} to ${receiverId}`);
@@ -370,47 +374,207 @@ export const listenForUserNotifications = (callback, passedUserId = null) => {
   }
 };
 
-// Direct fetch function when listener fails
-export const directFetchNotifications = async (userId = null) => {
+// Enhanced function to listen for notifications with multiple user ID formats
+export const listenForUserNotificationsWithUserIds = async (
+  onNotificationsUpdate
+) => {
   try {
-    if (!userId) {
-      userId = FIREBASE_AUTH.currentUser?.uid;
+    // Get Firebase Auth user
+    const auth = getAuth();
+    const firebaseUser = auth.currentUser;
+
+    if (!firebaseUser) {
+      console.error("No Firebase user logged in");
+      onNotificationsUpdate([]);
+      return () => {};
     }
 
-    if (!userId) {
-      console.error("No user ID available for direct notification fetch");
+    const firebaseId = firebaseUser.uid;
+    console.log(
+      "Setting up enhanced notification listener for Firebase ID:",
+      firebaseId
+    );
+
+    // Get the numeric user ID using the AuthContext function
+    let numericUserId;
+    try {
+      numericUserId = await getUserDataFromFirebase();
+      console.log("Numeric User ID retrieved from AuthContext:", numericUserId);
+    } catch (error) {
+      console.error("Error retrieving numeric user ID:", error);
+    }
+
+    // Create array of possible receiver IDs to check
+    const receiverIds = [firebaseId];
+
+    // Add numeric user ID in various formats if available
+    if (numericUserId) {
+      // As string format (like "30")
+      const numericIdStr = numericUserId.toString();
+      if (!receiverIds.includes(numericIdStr)) {
+        receiverIds.push(numericIdStr);
+      }
+
+      // As number format (like 30) if it's a valid number
+      if (!isNaN(numericUserId)) {
+        const numericValue = Number(numericUserId);
+        if (!receiverIds.includes(numericValue)) {
+          receiverIds.push(numericValue);
+        }
+      }
+    }
+
+    console.log("Checking for receiverIds:", receiverIds);
+
+    // If we have multiple IDs to check, we need to use an "in" query
+    // If we only have one ID, use a simple "==" query for better performance
+    let notificationsQuery;
+
+    if (receiverIds.length > 1) {
+      notificationsQuery = query(
+        collection(FIREBASE_DB, "notifications"),
+        where("receiverId", "in", receiverIds),
+        orderBy("createdAt", "desc")
+      );
+    } else if (receiverIds.length === 1) {
+      notificationsQuery = query(
+        collection(FIREBASE_DB, "notifications"),
+        where("receiverId", "==", receiverIds[0]),
+        orderBy("createdAt", "desc")
+      );
+    } else {
+      console.error("No receiver IDs available");
+      onNotificationsUpdate([]);
+      return () => {};
+    }
+
+    // Set up the snapshot listener
+    return onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const notifications = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          notifications.push({
+            id: doc.id,
+            ...data,
+            createdAt:
+              data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : data.createdAt
+                ? new Date(data.createdAt)
+                : new Date(),
+          });
+        });
+
+        console.log(
+          `Found ${notifications.length} notifications for receiverIds:`,
+          receiverIds
+        );
+        onNotificationsUpdate(notifications);
+      },
+      (error) => {
+        console.error("Error in notification listener:", error);
+        onNotificationsUpdate([]);
+      }
+    );
+  } catch (error) {
+    console.error("Error setting up notification listener:", error);
+    onNotificationsUpdate([]);
+    return () => {};
+  }
+};
+
+// Enhanced direct fetch function with multiple user ID formats
+export const directFetchNotifications = async (firebaseId = null) => {
+  try {
+    if (!firebaseId) {
+      firebaseId = FIREBASE_AUTH.currentUser?.uid;
+    }
+
+    if (!firebaseId) {
+      console.error("No Firebase ID available for direct notification fetch");
       return [];
     }
 
-    const userIdString = userId.toString();
-    console.log("Directly fetching notifications for userId:", userIdString);
+    console.log("Starting direct fetch with Firebase ID:", firebaseId);
 
-    const notificationsQuery = query(
-      collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userIdString),
-      orderBy("createdAt", "desc")
-    );
+    // Get numeric user ID
+    let numericUserId;
+    try {
+      numericUserId = await getUserDataFromFirebase();
+      console.log("Numeric User ID retrieved for direct fetch:", numericUserId);
+    } catch (error) {
+      console.error(
+        "Error retrieving numeric user ID for direct fetch:",
+        error
+      );
+    }
 
-    const querySnapshot = await getDocs(notificationsQuery);
-    const notifications = [];
+    // Create array of receiverIds to check
+    const receiverIds = [firebaseId];
 
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      notifications.push({
-        id: doc.id,
-        ...data,
-        createdAt:
-          data.createdAt instanceof Timestamp
-            ? data.createdAt.toDate()
-            : data.createdAt
-            ? new Date(data.createdAt)
-            : new Date(),
-      });
-    });
+    if (numericUserId) {
+      // Add as string
+      const numericIdStr = numericUserId.toString();
+      if (!receiverIds.includes(numericIdStr)) {
+        receiverIds.push(numericIdStr);
+      }
+
+      // Add as number if valid
+      if (!isNaN(numericUserId)) {
+        const numericValue = Number(numericUserId);
+        if (!receiverIds.includes(numericValue)) {
+          receiverIds.push(numericValue);
+        }
+      }
+    }
 
     console.log(
-      `Directly fetched ${notifications.length} notifications for user ${userIdString}`
+      "Directly fetching notifications for receiverIds:",
+      receiverIds
     );
+
+    // Track all notifications to avoid duplicates
+    const notificationMap = new Map();
+
+    // Process each receiverId separately
+    for (const receiverId of receiverIds) {
+      console.log("Checking receiverId:", receiverId);
+
+      const notificationsQuery = query(
+        collection(FIREBASE_DB, "notifications"),
+        where("receiverId", "==", receiverId),
+        orderBy("createdAt", "desc")
+      );
+
+      const querySnapshot = await getDocs(notificationsQuery);
+
+      querySnapshot.forEach((doc) => {
+        // Only add if we haven't already added this notification
+        if (!notificationMap.has(doc.id)) {
+          const data = doc.data();
+          notificationMap.set(doc.id, {
+            id: doc.id,
+            ...data,
+            createdAt:
+              data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : data.createdAt
+                ? new Date(data.createdAt)
+                : new Date(),
+          });
+        }
+      });
+    }
+
+    // Convert the map values to an array
+    const notifications = Array.from(notificationMap.values());
+
+    // Sort by createdAt descending
+    notifications.sort((a, b) => b.createdAt - a.createdAt);
+
+    console.log(`Directly fetched ${notifications.length} notifications`);
     return notifications;
   } catch (error) {
     console.error("Error directly fetching notifications:", error);
@@ -478,36 +642,77 @@ export const getNotificationsBetweenUsers = (
 };
 
 // Get count of unread notifications
-export const getUnreadNotificationCount = (callback) => {
+export const getUnreadNotificationCount = async (callback) => {
   try {
-    // Get current user ID
-    const userId = FIREBASE_AUTH.currentUser?.uid;
-    if (!userId) {
-      console.log("No user ID available, can't get unread count");
+    // Get current Firebase user ID
+    const firebaseId = FIREBASE_AUTH.currentUser?.uid;
+    if (!firebaseId) {
+      console.log("No Firebase ID available, can't get unread count");
       callback(0);
       return () => {};
     }
 
-    // Create query for unread notifications where user is RECEIVER
-    const unreadQuery = query(
-      collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId.toString()),
-      where("read", "==", false)
-    );
+    // Get numeric user ID
+    let numericUserId;
+    try {
+      numericUserId = await getUserDataFromFirebase();
+    } catch (error) {
+      console.error(
+        "Error retrieving numeric user ID for unread count:",
+        error
+      );
+    }
 
-    // Setup real-time listener
-    const unsubscribe = onSnapshot(
-      unreadQuery,
-      (snapshot) => {
-        callback(snapshot.size);
-      },
-      (error) => {
-        console.error("Error getting unread notification count:", error);
-        callback(0);
+    // Create array of possible receiver IDs
+    const receiverIds = [firebaseId];
+
+    if (numericUserId) {
+      receiverIds.push(numericUserId.toString());
+      if (!isNaN(numericUserId)) {
+        receiverIds.push(Number(numericUserId));
       }
-    );
+    }
 
-    return typeof unsubscribe === "function" ? unsubscribe : () => {};
+    // For unread count, we need to use separate queries and combine the results
+    // since compound queries with "in" and "==" aren't supported
+    let unsubscribes = [];
+    let countMap = new Map(); // Use a map to track unique notification IDs
+
+    // Set up a listener for each receiver ID
+    for (const receiverId of receiverIds) {
+      const unreadQuery = query(
+        collection(FIREBASE_DB, "notifications"),
+        where("receiverId", "==", receiverId),
+        where("read", "==", false)
+      );
+
+      const unsubscribe = onSnapshot(
+        unreadQuery,
+        (snapshot) => {
+          // Add each notification ID to the map
+          snapshot.forEach((doc) => {
+            countMap.set(doc.id, true);
+          });
+
+          // Call the callback with the total unique count
+          callback(countMap.size);
+        },
+        (error) => {
+          console.error(`Error getting unread count for ${receiverId}:`, error);
+        }
+      );
+
+      unsubscribes.push(unsubscribe);
+    }
+
+    // Return a function that unsubscribes from all listeners
+    return () => {
+      unsubscribes.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+    };
   } catch (error) {
     console.error("Error setting up unread count listener:", error);
     callback(0);
@@ -518,36 +723,67 @@ export const getUnreadNotificationCount = (callback) => {
 // Mark all notifications as read
 export const markAllNotificationsAsRead = async () => {
   try {
-    const userId = FIREBASE_AUTH.currentUser?.uid;
-    if (!userId) {
-      console.error("No user ID available");
+    // Get Firebase user ID
+    const firebaseId = FIREBASE_AUTH.currentUser?.uid;
+    if (!firebaseId) {
+      console.error("No Firebase ID available");
       return false;
     }
 
-    // Get all unread notifications
-    const unreadQuery = query(
-      collection(FIREBASE_DB, "notifications"),
-      where("receiverId", "==", userId.toString()),
-      where("read", "==", false)
-    );
+    // Get numeric user ID
+    let numericUserId;
+    try {
+      numericUserId = await getUserDataFromFirebase();
+    } catch (error) {
+      console.error(
+        "Error retrieving numeric user ID for marking all read:",
+        error
+      );
+    }
 
-    const snapshot = await getDocs(unreadQuery);
+    // Create array of possible receiver IDs
+    const receiverIds = [firebaseId];
 
-    if (snapshot.empty) {
+    if (numericUserId) {
+      receiverIds.push(numericUserId.toString());
+      if (!isNaN(numericUserId)) {
+        receiverIds.push(Number(numericUserId));
+      }
+    }
+
+    // Track unique notification IDs to avoid duplicates
+    const processedIds = new Set();
+    const promises = [];
+
+    // Process each receiver ID
+    for (const receiverId of receiverIds) {
+      const unreadQuery = query(
+        collection(FIREBASE_DB, "notifications"),
+        where("receiverId", "==", receiverId),
+        where("read", "==", false)
+      );
+
+      const snapshot = await getDocs(unreadQuery);
+
+      snapshot.forEach((doc) => {
+        // Only process each notification once
+        if (!processedIds.has(doc.id)) {
+          processedIds.add(doc.id);
+
+          const notificationRef = doc.ref;
+          promises.push(
+            updateDoc(notificationRef, {
+              read: true,
+            })
+          );
+        }
+      });
+    }
+
+    if (promises.length === 0) {
       console.log("No unread notifications to mark as read");
       return true;
     }
-
-    // Update each notification
-    const promises = [];
-    snapshot.forEach((doc) => {
-      const notificationRef = doc.ref;
-      promises.push(
-        updateDoc(notificationRef, {
-          read: true,
-        })
-      );
-    });
 
     await Promise.all(promises);
     console.log(`Marked ${promises.length} notifications as read`);

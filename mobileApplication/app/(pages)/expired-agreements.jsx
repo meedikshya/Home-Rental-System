@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  RefreshControl,
+  Image, // Import Image component
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -14,36 +16,50 @@ import { useNavigation } from "@react-navigation/native";
 import ApiHandler from "../../api/ApiHandler";
 import { getUserDataFromFirebase } from "../../context/AuthContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 
-// Add the standalonePage prop with default value true
 const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
   const [agreements, setAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
+  // Fetch on initial mount
   useEffect(() => {
     fetchExpiredAgreements();
   }, []);
 
+  // Refresh when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchExpiredAgreements();
+      return () => {}; // cleanup
+    }, [])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchExpiredAgreements();
+  };
+
   const fetchExpiredAgreements = async () => {
     try {
-      setLoading(true);
+      if (!refreshing) setLoading(true);
 
-      // Get the current user's ID directly using the function from AuthContext
       const renterId = await getUserDataFromFirebase();
 
       if (!renterId) {
         console.log("Could not retrieve user ID");
         setLoading(false);
+        setRefreshing(false);
         setAgreements([]);
         return;
       }
 
       console.log("Fetching expired agreements for renter ID:", renterId);
 
-      // Use the direct API endpoint that filters by renter ID
       const expiredAgreements = await ApiHandler.get(
         `/Agreements/expired-by-renter/${renterId}`
       );
@@ -52,12 +68,25 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
         console.log("No expired agreements found for this user");
         setAgreements([]);
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
       console.log(`Found ${expiredAgreements.length} expired agreements`);
 
-      // Fetch additional data for each agreement
+      const imagesResponse = await ApiHandler.get("/PropertyImages");
+      const imagesByPropertyId = {};
+      if (imagesResponse && Array.isArray(imagesResponse)) {
+        imagesResponse.forEach((img) => {
+          if (img && img.propertyId && img.imageUrl) {
+            if (!imagesByPropertyId[img.propertyId]) {
+              imagesByPropertyId[img.propertyId] = [];
+            }
+            imagesByPropertyId[img.propertyId].push(img.imageUrl);
+          }
+        });
+      }
+
       const agreementsWithDetails = await Promise.all(
         expiredAgreements.map(async (agreement) => {
           try {
@@ -71,7 +100,18 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
             );
             if (!property) return null;
 
-            // Fetch landlord name if available
+            const propertyImages =
+              imagesByPropertyId[property.propertyId] || [];
+            const defaultImage = "https://via.placeholder.com/150.png";
+            const enhancedProperty = {
+              ...property,
+              images:
+                propertyImages.length > 0
+                  ? propertyImages
+                  : [property.image || defaultImage],
+              image: propertyImages[0] || property.image || defaultImage,
+            };
+
             let landlordName = "Property Owner";
             if (property.landlordId) {
               try {
@@ -90,7 +130,7 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
 
             return {
               ...agreement,
-              property: property,
+              property: enhancedProperty,
               booking: booking,
               address: `${property.city || ""}, ${
                 property.municipality || ""
@@ -111,29 +151,32 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
       console.log(
         `Successfully processed ${validAgreements.length} agreements with details`
       );
-
       setAgreements(validAgreements);
-      setLoading(false);
     } catch (error) {
       console.error("Error fetching expired agreements:", error);
-      setLoading(false);
       Alert.alert("Error", "Failed to load expired agreements.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  // The rest of your code remains the same...
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short", // Use short month name
+        day: "numeric",
+      });
+    } catch (e) {
+      return "Invalid Date";
+    }
   };
 
-  // Create a function to render content
   const renderContent = () => {
-    if (loading) {
+    if (loading && !refreshing) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#20319D" />
@@ -145,81 +188,136 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
         <FlatList
           data={agreements}
           keyExtractor={(item) => item.agreementId.toString()}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() =>
-                router.push({
-                  pathname: "/(pages)/agreement-page",
-                  params: {
-                    propertyId: item.property.propertyId,
-                    landlordId: item.property.landlordId,
-                    bookingId: item.bookingId,
-                    renterId: item.renterId,
-                    image: item.property.image,
-                    address: item.address,
-                    landlordName: item.landlordName || "Property Owner",
-                    bedrooms: item.property.totalBedrooms,
-                    bathrooms: item.property.totalWashrooms,
-                    kitchen: item.property.totalKitchens,
-                    price: item.property.price,
-                    agreementId: item.agreementId,
-                    startDate: item.startDate,
-                    endDate: item.endDate,
-                    status: "Expired",
-                  },
-                })
-              }
-            >
-              <View style={styles.cardHeader}>
-                <Text style={styles.propertyAddress} numberOfLines={1}>
-                  {item.address}
-                </Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>Expired</Text>
+          renderItem={({ item }) => {
+            const imageUrl =
+              item.property.image || "https://via.placeholder.com/150.png";
+
+            return (
+              <TouchableOpacity
+                style={styles.card}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(pages)/agreement-page",
+                    params: {
+                      propertyId: item.property.propertyId,
+                      landlordId: item.property.landlordId,
+                      bookingId: item.bookingId,
+                      renterId: item.renterId,
+                      image: imageUrl,
+                      address: item.address,
+                      landlordName: item.landlordName || "Property Owner",
+                      bedrooms: item.property.totalBedrooms || 0,
+                      bathrooms: item.property.totalWashrooms || 0,
+                      kitchen: item.property.totalKitchens || 0,
+                      price: item.property.price || 0,
+                      agreementId: item.agreementId,
+                      startDate: item.startDate,
+                      endDate: item.endDate,
+                      status: "Expired",
+                    },
+                  })
+                }
+              >
+                <View style={styles.cardContentRow}>
+                  <Image source={{ uri: imageUrl }} style={styles.thumbnail} />
+                  <View style={styles.detailsColumn}>
+                    <Text style={styles.propertyTitleText} numberOfLines={1}>
+                      {item.property.title || "Unnamed Property"}
+                    </Text>
+                    <Text style={styles.propertyAddress} numberOfLines={1}>
+                      {item.address}
+                    </Text>
+                    <View style={styles.statusBadge}>
+                      <Text style={styles.statusText}>Expired</Text>
+                    </View>
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.detailsRow}>
-                <Ionicons name="calendar" size={16} color="#666" />
-                <Text style={styles.detailText}>
-                  {formatDate(item.startDate)} - {formatDate(item.endDate)}
-                </Text>
-              </View>
+                <View style={styles.separator} />
 
-              <View style={styles.detailsRow}>
-                <Ionicons name="cash" size={16} color="#666" />
-                <Text style={styles.detailText}>
-                  Rs. {item.property.price} / month
-                </Text>
-              </View>
+                <View style={styles.infoRow}>
+                  <View style={styles.infoItem}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={16}
+                      color="#4B5563"
+                    />
+                    <Text style={styles.detailText}>
+                      {formatDate(item.startDate)} - {formatDate(item.endDate)}
+                    </Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="cash-outline" size={16} color="#4B5563" />
+                    <Text style={styles.detailText}>
+                      Rs. {item.property.price || 0} / month
+                    </Text>
+                  </View>
+                </View>
 
-              <View style={styles.actionRow}>
-                <TouchableOpacity
-                  style={styles.viewButton}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(pages)/property",
-                      params: { id: item.property.propertyId },
-                    })
-                  }
-                >
-                  <Text style={styles.viewButtonText}>View Property</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          )}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={styles.viewButton}
+                    onPress={() => {
+                      const defaultImage =
+                        "https://via.placeholder.com/300.png";
+                      const mainImage = item.property.image || defaultImage;
+                      const images = item.property.images || [mainImage];
+
+                      router.push({
+                        pathname: "/(pages)/details-page",
+                        params: {
+                          propertyId: item.property.propertyId,
+                          landlordId: item.property.landlordId,
+                          title: item.property.title || "Property",
+                          description:
+                            item.property.description ||
+                            "No description available",
+                          district: item.property.district || "",
+                          city: item.property.city || "",
+                          municipality: item.property.municipality || "",
+                          ward: item.property.ward || "",
+                          nearestLandmark: item.property.nearestLandmark || "",
+                          price: item.property.price || 0,
+                          roomType: item.property.roomType || "Room",
+                          status: item.property.status || "Available",
+                          createdAt:
+                            item.property.createdAt || new Date().toISOString(),
+                          totalBedrooms: item.property.totalBedrooms || 0,
+                          totalLivingRooms: item.property.totalLivingRooms || 0,
+                          totalWashrooms: item.property.totalWashrooms || 0,
+                          totalKitchens: item.property.totalKitchens || 0,
+                          image: mainImage,
+                          imagesData: JSON.stringify(images),
+                        },
+                      });
+                    }}
+                  >
+                    <Text style={styles.viewButtonText}>
+                      View Property Details
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
           contentContainerStyle={[
             styles.listContainer,
             !standalonePage && { paddingTop: 20 },
           ]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#20319D"]}
+            />
+          }
         />
       );
     } else {
       return (
         <View style={styles.emptyContainer}>
-          <Ionicons name="document-text-outline" size={60} color="#ccc" />
+          <Ionicons name="file-tray-outline" size={60} color="#CBD5E1" />
           <Text style={styles.emptyTitle}>No Expired Agreements</Text>
           <Text style={styles.emptyText}>
             You don't have any expired lease agreements yet.
@@ -229,11 +327,9 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
     }
   };
 
-  // Conditional rendering based on standalonePage prop
   if (standalonePage) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header only shown in standalone mode */}
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
@@ -244,21 +340,19 @@ const ExpiredAgreementsScreen = ({ standalonePage = true }) => {
           <Text style={styles.headerTitle}>Expired Agreements</Text>
           <View style={styles.emptySpace} />
         </View>
-
         {renderContent()}
       </View>
     );
   } else {
-    // Tab mode - just return the content
     return renderContent();
   }
 };
 
-// Your styles remain the same
+// Enhanced Stylesheet
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#F8FAFC", // Slightly lighter background
   },
   header: {
     backgroundColor: "#20319D",
@@ -288,50 +382,81 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#F8FAFC",
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: "#6B7280",
+    color: "#64748B",
   },
   listContainer: {
     padding: 16,
   },
   card: {
     backgroundColor: "white",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    shadowColor: "#94A3B8",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden", // Ensures children don't overflow rounded corners
   },
-  cardHeader: {
+  cardContentRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+    padding: 16, // Add padding around the top content
+  },
+  thumbnail: {
+    width: 72, // Slightly smaller thumbnail
+    height: 72,
+    borderRadius: 12,
+    marginRight: 16,
+    backgroundColor: "#F1F5F9", // Lighter placeholder background
+  },
+  detailsColumn: {
+    flex: 1,
+    justifyContent: "center", // Center content vertically
+  },
+  propertyTitleText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B", // Darker title
+    marginBottom: 4,
   },
   propertyAddress: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B", // Slightly muted address color
+    marginBottom: 8,
   },
   statusBadge: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#FEF2F2",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 12, // More rounded badge
+    borderWidth: 1,
+    borderColor: "#FEE2E2",
+    alignSelf: "flex-start",
   },
   statusText: {
-    color: "#DC2626",
-    fontSize: 12,
-    fontWeight: "500",
+    color: "#DC2626", // Stronger red
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "uppercase", // Uppercase status
   },
-  detailsRow: {
+  separator: {
+    height: 1,
+    backgroundColor: "#F1F5F9", // Lighter separator
+    marginHorizontal: 16, // Add horizontal margin to separator
+  },
+  infoRow: {
+    paddingVertical: 12, // Add padding around info rows
+    paddingHorizontal: 16,
+  },
+  infoItem: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
@@ -339,41 +464,53 @@ const styles = StyleSheet.create({
   detailText: {
     marginLeft: 8,
     fontSize: 14,
-    color: "#4B5563",
+    color: "#334155", // Slightly darker detail text
+    fontWeight: "500",
   },
   actionRow: {
-    marginTop: 12,
+    backgroundColor: "#F8FAFC", // Light background for action area
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
     flexDirection: "row",
     justifyContent: "flex-end",
   },
   viewButton: {
-    backgroundColor: "#E0E7FF",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: "#4F46E5", // Primary button color
+    paddingHorizontal: 20, // More horizontal padding
+    paddingVertical: 10,
     borderRadius: 8,
+    shadowColor: "#4F46E5",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   viewButtonText: {
-    color: "#4F46E5",
-    fontWeight: "500",
+    color: "#FFFFFF", // White text on primary button
+    fontWeight: "600",
+    fontSize: 14,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+    backgroundColor: "#F8FAFC",
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
-    marginTop: 16,
-    marginBottom: 8,
+    color: "#1E293B",
+    marginTop: 20,
+    marginBottom: 10,
   },
   emptyText: {
-    fontSize: 14,
-    color: "#6B7280",
+    fontSize: 15,
+    color: "#64748B",
     textAlign: "center",
-    maxWidth: "80%",
+    maxWidth: "85%",
+    lineHeight: 22,
   },
 });
 

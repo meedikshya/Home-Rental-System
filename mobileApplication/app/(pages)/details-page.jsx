@@ -78,6 +78,7 @@ const Details = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const { width, height } = Dimensions.get("window");
+  const [hasFoundExpiredAgreement, setHasFoundExpiredAgreement] = useState({});
 
   // Fetch current user ID from Firebase
   useEffect(() => {
@@ -168,8 +169,34 @@ const Details = () => {
         );
 
         if (userBooking) {
-          setIsBooked(true);
-          setBookingId(userBooking.bookingId);
+          const bookingId = userBooking.bookingId;
+
+          // Check if there's an agreement for this booking and if it's expired
+          try {
+            const agreementResponse = await ApiHandler.get(
+              `/Agreements/byBookingId/${bookingId}`
+            );
+
+            if (agreementResponse && agreementResponse.status === "Expired") {
+              // Only log if this is the first time we've seen this expired agreement
+              if (!hasFoundExpiredAgreement[bookingId]) {
+                console.log("Found expired agreement for booking", bookingId);
+                setHasFoundExpiredAgreement((prev) => ({
+                  ...prev,
+                  [bookingId]: true,
+                }));
+              }
+              setIsBooked(false);
+              setBookingId(null);
+            } else {
+              // If agreement exists and is not expired, show the booking
+              setIsBooked(true);
+              setBookingId(bookingId);
+            }
+          } catch (error) {
+            // If no agreement exists or other error
+            // ...existing error handling code...
+          }
         } else {
           setIsBooked(false);
           setBookingId(null);
@@ -180,6 +207,8 @@ const Details = () => {
       }
     } catch (error) {
       console.error("Error checking booking status:", error);
+      setIsBooked(false);
+      setBookingId(null);
     }
   };
 
@@ -212,19 +241,24 @@ const Details = () => {
     }, [refreshAllData])
   );
 
-  // Poll for updates every 3 seconds
   useEffect(() => {
     if (!propertyId) return;
 
+    // Check immediately once
+    if (currentUserId) {
+      checkBookingStatus(currentUserId);
+    }
+
     const interval = setInterval(() => {
       fetchPropertyDetails();
-      if (currentUserId) {
+
+      if (currentUserId && Object.keys(hasFoundExpiredAgreement).length === 0) {
         checkBookingStatus(currentUserId);
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [propertyId, currentUserId]);
+  }, [propertyId, currentUserId, hasFoundExpiredAgreement]);
 
   // Handle "Book Now" button press
   const handleBookNow = async () => {

@@ -20,6 +20,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import ApiHandler from "../../api/ApiHandler";
 import { getUserDataFromFirebase } from "../../context/AuthContext";
 import ExpiredAgreementsScreen from "../(pages)/expired-agreements.jsx";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { sendNotificationToUser } from "../../firebaseNotification.js";
+import { useAgreementExpirationCheck } from "../../hooks/useAgreementExpirationCheck.js";
 
 const { width } = Dimensions.get("window");
 
@@ -27,7 +30,7 @@ const MyAgreements = () => {
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState("active");
+  const [activeTab, setActiveTab] = useState("active"); // 'active' or 'expired'
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [agreements, setAgreements] = useState([]);
@@ -60,6 +63,7 @@ const MyAgreements = () => {
     if (!currentUserId) return;
 
     try {
+      // Get ALL agreements to check for expiring ones
       const response = await ApiHandler.get(
         `/Agreements/User/${currentUserId}`
       );
@@ -74,13 +78,11 @@ const MyAgreements = () => {
 
         setAgreements(nonExpiredAgreements);
 
-        // Rest of your existing fetch logic
         // Fetch property details for each agreement using booking ID
         const bookingPromises = nonExpiredAgreements.map((agreement) =>
           ApiHandler.get(`/Bookings/${agreement.bookingId}`)
         );
 
-        // ...existing code continues
         const bookingsData = await Promise.all(bookingPromises);
 
         // Now fetch property details using propertyId from bookings
@@ -170,7 +172,6 @@ const MyAgreements = () => {
     }
   }, [currentUserId]);
 
-  // Rest of your existing functions...
   useEffect(() => {
     if (currentUserId && activeTab === "active") {
       fetchAgreements();
@@ -193,7 +194,7 @@ const MyAgreements = () => {
     }
   }, [fetchAgreements, activeTab]);
 
-  // Your existing helper functions...
+  // Rest of your component remains the same...
   const handleViewAgreement = (agreement) => {
     // Find the associated property using the booking ID
     const property = Object.values(properties).find(
@@ -266,7 +267,7 @@ const MyAgreements = () => {
 
   const getStatusColor = (status) => {
     switch (status.toLowerCase()) {
-      case "active":
+      case "approved":
         return "#16A34A";
       case "expired":
         return "#DC2626";
@@ -281,7 +282,7 @@ const MyAgreements = () => {
 
   const getStatusBgColor = (status) => {
     switch (status.toLowerCase()) {
-      case "active":
+      case "approved":
         return "#DCFCE7";
       case "expired":
         return "#FEE2E2";
@@ -318,8 +319,9 @@ const MyAgreements = () => {
           >
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Agreements</Text>
+          <Text style={styles.headerTitle}>Notifications</Text>
           <View style={styles.headerRight} />
+          {/* Empty view to balance the layout */}
         </View>
       </View>
 
@@ -539,7 +541,22 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
   },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "white",
+    flex: 1,
+    textAlign: "center",
+  },
   backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkButton: {
     width: 40,
     height: 40,
     borderRadius: 20,

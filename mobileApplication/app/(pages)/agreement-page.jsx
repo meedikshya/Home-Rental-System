@@ -8,7 +8,6 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -97,6 +96,18 @@ const Agreement = () => {
 
       if (response) {
         console.log("Agreement found:", response);
+
+        if (response.status === "Expired") {
+          setStartDate(null);
+          setEndDate(null);
+          setIsAgreed(false);
+          setIsPending(false);
+          setIsApproved(false);
+          setAgreementExists(false);
+          return false;
+        }
+
+        // For non-expired agreements, proceed as normal
         setStartDate(new Date(response.startDate));
         setEndDate(new Date(response.endDate));
         setIsAgreed(true);
@@ -135,7 +146,7 @@ const Agreement = () => {
       }
       return false;
     } finally {
-      setLoading(false); // Ensure loading is set to false, even if there's an error
+      setLoading(false);
     }
   };
 
@@ -179,11 +190,11 @@ const Agreement = () => {
       if (bookingId) {
         await fetchAgreementDetails();
       } else {
-        setLoading(false); // Make sure loading is set to false if there's no bookingId
+        setLoading(false);
       }
     } catch (error) {
       console.error("Error refreshing data:", error);
-      setLoading(false); // Set loading to false on error
+      setLoading(false);
     } finally {
       setRefreshing(false);
     }
@@ -223,11 +234,11 @@ const Agreement = () => {
         if (bookingId) {
           await fetchAgreementDetails();
         } else {
-          setLoading(false); // Make sure loading is set to false if there's no bookingId
+          setLoading(false);
         }
       } catch (error) {
         console.error("Error loading initial data:", error);
-        setLoading(false); // Make sure loading is set to false on error
+        setLoading(false);
       }
     };
 
@@ -277,8 +288,8 @@ const Agreement = () => {
         const additionalData = {
           propertyId,
           bookingId,
-          agreementId: response?.agreementId, // If your API returns the new agreement ID
-          screen: "LandlordAgreementDetails", // Screen to navigate to when notification is tapped
+          agreementId: response?.agreementId,
+          screen: "LandlordAgreementDetails",
           action: "view_agreement",
           timestamp: new Date().toISOString(),
         };
@@ -299,7 +310,6 @@ const Agreement = () => {
         "Request Sent",
         "The request will be processed after the landlord approves your request."
       );
-      // Refresh data after creating agreement
       refreshAllData();
     } catch (error) {
       console.error("Error creating agreement:", error);

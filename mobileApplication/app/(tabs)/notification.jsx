@@ -7,12 +7,14 @@ import {
   ActivityIndicator,
   StatusBar,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ApiHandler from "../../api/ApiHandler.jsx";
 import {
   listenForUserNotifications,
+  listenForUserNotificationsWithUserIds,
   markNotificationAsRead,
   directFetchNotifications,
 } from "../../firebaseNotification.js";
@@ -37,7 +39,6 @@ const NotificationScreen = () => {
   }, [notifications]);
 
   useEffect(() => {
-    // Only update if count has changed
     if (prevUnreadCountRef.current !== unreadCount) {
       prevUnreadCountRef.current = unreadCount;
       updateUnreadCount(unreadCount);
@@ -45,6 +46,16 @@ const NotificationScreen = () => {
   }, [unreadCount, updateUnreadCount]);
 
   const getNotificationTypeInfo = (notification) => {
+    // Check for agreement expiration notifications by title first
+    if (notification.title === "Agreement Expiring Tomorrow") {
+      return {
+        icon: "alert-triangle",
+        color: "#F59E0B", // Amber/Orange for warning
+        bgColor: "#FEF3C7", // Light amber
+        text: "Expiring Soon",
+      };
+    }
+
     if (!notification.data || !notification.data.action) {
       return {
         icon: "bell",
@@ -55,6 +66,13 @@ const NotificationScreen = () => {
     }
 
     switch (notification.data.action) {
+      case "view_expiring_agreement":
+        return {
+          icon: "alert-triangle",
+          color: "#F59E0B", // Amber/Orange for warning
+          bgColor: "#FEF3C7", // Light amber
+          text: "Expiring Soon",
+        };
       case "view_agreement":
         return {
           icon: "file-text",
@@ -130,9 +148,229 @@ const NotificationScreen = () => {
       console.error("Error marking notification as read:", error);
     });
 
-    // Handle navigation with router
+    // AGREEMENT EXPIRATION HANDLER
+    // Check if this is an expiration notification by title
+    if (
+      notification.title === "Agreement Expiring Tomorrow" &&
+      notification.data
+    ) {
+      try {
+        // Show loading indicator
+        setLoading(true);
+
+        const agreementId = notification.data.agreementId;
+        if (!agreementId) {
+          console.error("No agreement ID in expiration notification");
+          return;
+        }
+
+        // 1. Fetch agreement details
+        const agreement = await ApiHandler.get(`/Agreements/${agreementId}`);
+        if (!agreement) {
+          console.error("Expiring agreement not found");
+          return;
+        }
+
+        // 2. Fetch booking details
+        const bookingId = agreement.bookingId || notification.data.bookingId;
+        if (!bookingId) {
+          console.error("No booking ID in agreement");
+          return;
+        }
+
+        const booking = await ApiHandler.get(`/Bookings/${bookingId}`);
+        if (!booking) {
+          console.error("Booking not found");
+          return;
+        }
+
+        // 3. Fetch property details
+        const propertyId = booking.propertyId || notification.data.propertyId;
+        if (!propertyId) {
+          console.error("No property ID in booking");
+          return;
+        }
+
+        const property = await ApiHandler.get(`/Properties/${propertyId}`);
+        if (!property) {
+          console.error("Property not found");
+          return;
+        }
+
+        // 4. Fetch property images
+        const allImages = await ApiHandler.get("/PropertyImages");
+        const propertyImages = allImages
+          .filter((img) => img.propertyId === propertyId)
+          .map((img) => img.imageUrl);
+
+        const imagesForProperty =
+          propertyImages.length > 0
+            ? propertyImages
+            : [property.image || "https://via.placeholder.com/300.png"];
+
+        // 5. Fetch landlord details
+        const landlordId = property.landlordId || notification.data.landlordId;
+        let landlordName = "Unknown Owner";
+
+        if (landlordId) {
+          try {
+            const landlord = await ApiHandler.get(
+              `/UserDetails/userId/${landlordId}`
+            );
+            if (landlord) {
+              landlordName = `${landlord.firstName || ""} ${
+                landlord.lastName || ""
+              }`.trim();
+            }
+          } catch (error) {
+            console.error("Error fetching landlord:", error);
+          }
+        }
+
+        // 6. Navigate to the agreement page with all parameters
+        router.push({
+          pathname: "/(pages)/agreement-page",
+          params: {
+            propertyId: property.propertyId,
+            image: imagesForProperty[0],
+            imagesData: JSON.stringify(imagesForProperty),
+            address: `${property.city}, ${property.municipality} - ${property.ward}`,
+            bedrooms: property.totalBedrooms,
+            bathrooms: property.totalWashrooms,
+            kitchen: property.totalKitchens,
+            price: property.price,
+            bookingId: booking.bookingId,
+            agreementId: agreement.agreementId,
+            renterId: agreement.renterId || notification.data.renterId,
+            landlordId: property.landlordId || notification.data.landlordId,
+            landlordName: landlordName,
+            startDate: agreement.startDate,
+            endDate: agreement.endDate,
+          },
+        });
+        return;
+      } catch (error) {
+        console.error("Error navigating to expiring agreement:", error);
+        Alert.alert(
+          "Navigation Error",
+          "Could not load the agreement details. Please try again."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // Handle navigation with router based on action
     if (notification.data) {
       switch (notification.data.action) {
+        case "view_expiring_agreement":
+          try {
+            // Show loading indicator
+            setLoading(true);
+
+            const agreementId = notification.data.agreementId;
+            if (!agreementId) {
+              console.error("No agreement ID in notification");
+              return;
+            }
+
+            // 1. Fetch agreement details
+            const agreement = await ApiHandler.get(
+              `/Agreements/${agreementId}`
+            );
+            if (!agreement) {
+              console.error("Agreement not found");
+              return;
+            }
+
+            // 2. Fetch booking details
+            const bookingId = agreement.bookingId;
+            if (!bookingId) {
+              console.error("No booking ID in agreement");
+              return;
+            }
+
+            const booking = await ApiHandler.get(`/Bookings/${bookingId}`);
+            if (!booking) {
+              console.error("Booking not found");
+              return;
+            }
+
+            // 3. Fetch property details
+            const propertyId = booking.propertyId;
+            if (!propertyId) {
+              console.error("No property ID in booking");
+              return;
+            }
+
+            const property = await ApiHandler.get(`/Properties/${propertyId}`);
+            if (!property) {
+              console.error("Property not found");
+              return;
+            }
+
+            // 4. Fetch property images
+            const allImages = await ApiHandler.get("/PropertyImages");
+            const propertyImages = allImages
+              .filter((img) => img.propertyId === propertyId)
+              .map((img) => img.imageUrl);
+
+            const imagesForProperty =
+              propertyImages.length > 0
+                ? propertyImages
+                : [property.image || "https://via.placeholder.com/300.png"];
+
+            // 5. Fetch landlord details
+            const landlordId = property.landlordId;
+            let landlordName = "Unknown Owner";
+
+            if (landlordId) {
+              try {
+                const landlord = await ApiHandler.get(
+                  `/UserDetails/userId/${landlordId}`
+                );
+                if (landlord) {
+                  landlordName = `${landlord.firstName || ""} ${
+                    landlord.lastName || ""
+                  }`.trim();
+                }
+              } catch (error) {
+                console.error("Error fetching landlord:", error);
+              }
+            }
+
+            // 6. Navigate to the agreement page with all parameters
+            router.push({
+              pathname: "/(pages)/agreement-page",
+              params: {
+                propertyId: property.propertyId,
+                image: imagesForProperty[0],
+                imagesData: JSON.stringify(imagesForProperty),
+                address: `${property.city}, ${property.municipality} - ${property.ward}`,
+                bedrooms: property.totalBedrooms,
+                bathrooms: property.totalWashrooms,
+                kitchen: property.totalKitchens,
+                price: property.price,
+                bookingId: booking.bookingId,
+                agreementId: agreement.agreementId,
+                renterId: agreement.renterId,
+                landlordId: property.landlordId,
+                landlordName: landlordName,
+                startDate: agreement.startDate,
+                endDate: agreement.endDate,
+              },
+            });
+          } catch (error) {
+            console.error("Error navigating to agreement:", error);
+            Alert.alert(
+              "Navigation Error",
+              "Could not load the agreement details. Please try again."
+            );
+          } finally {
+            setLoading(false);
+          }
+          break;
+
         case "view_agreement":
           try {
             // Show loading indicator
@@ -310,10 +548,15 @@ const NotificationScreen = () => {
     let unsubscribe = null;
 
     try {
-      unsubscribe = listenForUserNotifications((fetchedNotifications) => {
-        setNotifications(fetchedNotifications);
-        setLoading(false);
-      }, firebaseId);
+      // Replace the original function with the enhanced one that checks multiple IDs
+      unsubscribe = listenForUserNotificationsWithUserIds(
+        (fetchedNotifications) => {
+          setNotifications(fetchedNotifications);
+          setLoading(false);
+        },
+        // Pass numeric user ID here - from context or wherever you store it
+        getUserDataFromFirebase()
+      );
     } catch (error) {
       directFetchNotifications(firebaseId)
         .then(setNotifications)
@@ -375,7 +618,8 @@ const NotificationScreen = () => {
             {notification.body}
           </Text>
 
-          {notification.data && notification.data.action && (
+          {(notification.data && notification.data.action) ||
+          notification.title === "Agreement Expiring Tomorrow" ? (
             <View>
               <View
                 style={[
@@ -384,11 +628,13 @@ const NotificationScreen = () => {
                 ]}
               >
                 <Text style={[styles.notificationActionText, { color }]}>
-                  {text}
+                  {notification.title === "Agreement Expiring Tomorrow"
+                    ? "Expiring Soon"
+                    : text}
                 </Text>
               </View>
             </View>
-          )}
+          ) : null}
         </View>
       </TouchableOpacity>
     );

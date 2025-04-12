@@ -9,6 +9,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useAgreementExpirationCheck } from "../hooks/useAgreementExpirationCheck.js";
 
@@ -24,7 +25,38 @@ export default function RootLayout() {
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
-  const { lastCheckTime } = useAgreementExpirationCheck();
+  const { lastCheckTime, forceCheck } = useAgreementExpirationCheck();
+
+  useEffect(() => {
+    const runStartupCheck = async () => {
+      try {
+        // Check if we've already done a startup check today
+        const today = new Date().toISOString().split("T")[0];
+        const startupCheckKey = `startup_check_${today}`;
+        const hasCheckedToday = await AsyncStorage.getItem(startupCheckKey);
+
+        if (hasCheckedToday === "true") {
+          console.log("Already ran startup agreement check today");
+          return;
+        }
+
+        console.log("Running startup agreement expiration check...");
+        await forceCheck();
+        console.log(
+          "Startup agreement check completed at:",
+          new Date().toISOString()
+        );
+
+        // Mark as checked for today
+        await AsyncStorage.setItem(startupCheckKey, "true");
+      } catch (error) {
+        console.error("Error in startup agreement check:", error);
+      }
+    };
+
+    // Run the check when app starts
+    runStartupCheck();
+  }, [forceCheck]);
 
   // Initialize notifications system - simplified
   useEffect(() => {
