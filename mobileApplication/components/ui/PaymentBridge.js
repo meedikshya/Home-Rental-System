@@ -395,16 +395,7 @@ const PaymentBridge = ({
         />
       </View>
 
-      {processingPayment && (
-        <View style={styles.processingOverlay}>
-          <Text style={styles.processingText}>
-            Please complete your payment in eSewa.
-          </Text>
-          <Text style={styles.processingSubtext}>
-            Do not close this screen until your payment is complete.
-          </Text>
-        </View>
-      )}
+      {processingPayment && <View style={styles.processingOverlay}></View>}
     </SafeAreaView>
   );
 };

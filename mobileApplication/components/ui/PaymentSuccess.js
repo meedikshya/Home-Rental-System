@@ -171,13 +171,6 @@ const PaymentSuccess = ({
             </View>
 
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Transaction ID</Text>
-              <Text style={styles.detailValue}>
-                {transactionId || "Pending"}
-              </Text>
-            </View>
-
-            <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Status</Text>
               <Text style={styles.statusValue}>Completed</Text>
             </View>

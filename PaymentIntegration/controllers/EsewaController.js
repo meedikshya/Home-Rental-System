@@ -7,12 +7,9 @@ const Booking = require("../models/Booking");
 const Property = require("../models/Property");
 const { db } = require("../db");
 
-/**
- * Initialize a new payment for an agreement
- */
 router.post("/initialize-agreement-payment", async (req, res) => {
   try {
-    const { agreementId, amount, uniqueSuffix } = req.body;
+    const { agreementId, amount, uniqueSuffix, bookingId } = req.body;
 
     if (!agreementId || !amount) {
       return res.status(400).json({
@@ -33,6 +30,9 @@ router.post("/initialize-agreement-payment", async (req, res) => {
       });
     }
 
+    // Use bookingId from request or from agreement
+    const paymentBookingId = bookingId || agreement.bookingId;
+
     // Create a pending payment record
     const payment = await Payment.create({
       agreementId: agreementId,
@@ -41,6 +41,7 @@ router.post("/initialize-agreement-payment", async (req, res) => {
       paymentStatus: "Pending",
       PaymentGateway: "eSewa",
       paymentDate: new Date(),
+      bookingId: paymentBookingId, // Store bookingId in payment record
     });
 
     // Create unique transaction ID by combining payment ID with suffix
@@ -68,6 +69,7 @@ router.post("/initialize-agreement-payment", async (req, res) => {
         amount: payment.amount,
         agreementId: payment.agreementId,
         renterId: payment.renterId,
+        bookingId: paymentBookingId, // Include bookingId in response
         status: payment.paymentStatus,
         transactionId: transactionId,
       },
@@ -76,7 +78,7 @@ router.post("/initialize-agreement-payment", async (req, res) => {
         pid: transactionId,
         scd: process.env.ESEWA_PRODUCT_CODE,
       },
-      redirectUrl: `https://rc-epay.esewa.com.np/api/epay/main/v2/form`, // For frontend to use
+      redirectUrl: `https://rc-epay.esewa.com.np/api/epay/main/v2/form`,
       successUrl: `http://${req.headers.host}/api/esewa/complete-payment`,
       failureUrl: `http://${req.headers.host}/api/esewa/payment-failed`,
     });
@@ -155,12 +157,14 @@ router.get("/complete-payment", async (req, res) => {
           transactionId: payment.TransactionId || "N/A",
           date: payment.paymentDate,
           status: payment.paymentStatus,
+          bookingId: payment.bookingId, // Include bookingId in response
         },
         redirectData: {
           type: "success",
           paymentId: payment.paymentId,
           transactionId: payment.TransactionId || "N/A",
           amount: payment.amount,
+          bookingId: payment.bookingId, // Include bookingId in redirect data
         },
       });
     }
@@ -168,6 +172,7 @@ router.get("/complete-payment", async (req, res) => {
     let propertyId = null;
     let landlordId = null;
     let address = null;
+    let bookingId = payment.bookingId || null;
 
     // Update payment record
     await payment.update(
@@ -189,37 +194,55 @@ router.get("/complete-payment", async (req, res) => {
     });
 
     if (agreement) {
-      const bookingId = agreement.bookingId;
+      // Use bookingId from payment if available, otherwise use from agreement
+      bookingId = bookingId || agreement.bookingId;
       landlordId = agreement.landlordId;
 
-      const booking = await Booking.findOne({
-        where: { bookingId: bookingId },
-        transaction,
-      });
-
-      if (booking) {
-        propertyId = booking.propertyId;
-
-        const property = await Property.findOne({
-          where: { propertyId: propertyId },
+      // Only query booking if we have a bookingId
+      if (bookingId) {
+        const booking = await Booking.findOne({
+          where: { bookingId: bookingId },
           transaction,
         });
 
-        if (property) {
-          address = property.address;
-        }
+        if (booking) {
+          propertyId = booking.propertyId;
 
-        await Property.update(
-          { status: "Rented" },
-          {
+          const property = await Property.findOne({
             where: { propertyId: propertyId },
             transaction,
-          }
-        );
+          });
 
-        console.log(
-          `Property ${propertyId} marked as Rented after payment ${paymentId}`
-        );
+          if (property) {
+            address = property.address;
+          }
+
+          // Update property status to "Rented"
+          await Property.update(
+            { status: "Rented" },
+            {
+              where: { propertyId: propertyId },
+              transaction,
+            }
+          );
+
+          console.log(
+            `Property ${propertyId} marked as Rented after payment ${paymentId}`
+          );
+
+          // Update booking status to "Approved"
+          await Booking.update(
+            { status: "Accepted" },
+            {
+              where: { bookingId: booking.bookingId },
+              transaction,
+            }
+          );
+
+          console.log(
+            `Booking ${booking.bookingId} marked as Approved after payment ${paymentId}`
+          );
+        }
       }
     }
 
@@ -234,6 +257,7 @@ router.get("/complete-payment", async (req, res) => {
         transactionId: paymentInfo.decodedData.transaction_code,
         date: payment.paymentDate,
         status: "Completed",
+        bookingId: bookingId,
       },
       redirectData: {
         type: "success",
@@ -244,6 +268,7 @@ router.get("/complete-payment", async (req, res) => {
         renterId: payment.renterId,
         propertyId: propertyId,
         agreementId: agreementId,
+        bookingId: bookingId,
         address: address,
       },
     });
@@ -326,6 +351,104 @@ router.post("/payment-failed", async (req, res) => {
   }
 });
 
+router.post("/updateBookingStatus", async (req, res) => {
+  try {
+    const { bookingId, status } = req.body;
+
+    if (!bookingId || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID and status are required",
+      });
+    }
+
+    // Update the booking status
+    const [updatedRows] = await Booking.update(
+      { status: status },
+      { where: { bookingId: bookingId } }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking status not updated",
+      });
+    }
+
+    // Get the updated booking
+    const booking = await Booking.findOne({
+      where: { bookingId: bookingId },
+    });
+
+    return res.json({
+      success: true,
+      message: `Booking ${bookingId} status updated to ${status}`,
+      booking: booking,
+    });
+  } catch (error) {
+    console.error("Error updating booking status:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+router.post("/updateStatusByAgreement", async (req, res) => {
+  try {
+    const { agreementId, status } = req.body;
+
+    if (!agreementId || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Agreement ID and status are required",
+      });
+    }
+
+    // Find the agreement to get the booking ID
+    const agreement = await Agreement.findOne({
+      where: { agreementId: agreementId },
+    });
+
+    if (!agreement || !agreement.bookingId) {
+      return res.status(404).json({
+        success: false,
+        message: "Agreement not found or no booking associated",
+      });
+    }
+
+    // Update the booking status
+    const [updatedRows] = await Booking.update(
+      { status: status },
+      { where: { bookingId: agreement.bookingId } }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking status not updated",
+      });
+    }
+
+    // Get the updated booking
+    const booking = await Booking.findOne({
+      where: { bookingId: agreement.bookingId },
+    });
+
+    return res.json({
+      success: true,
+      message: `Booking ${agreement.bookingId} status updated to ${status}`,
+      booking: booking,
+    });
+  } catch (error) {
+    console.error("Error updating booking status:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
 router.get("/payment-params", async (req, res) => {
   try {
     const { pid, amount, scd } = req.query;
@@ -337,11 +460,13 @@ router.get("/payment-params", async (req, res) => {
       });
     }
 
+    // Get payment hash from eSewa
     const paymentHash = await getEsewaPaymentHash({
       amount,
       transaction_uuid: pid,
     });
 
+    // Return parameters needed for the frontend form
     return res.json({
       success: true,
       formParams: {

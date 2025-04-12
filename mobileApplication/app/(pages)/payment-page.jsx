@@ -50,8 +50,15 @@ const PaymentPage = () => {
   const [esewaParams, setEsewaParams] = useState(null);
 
   // Extract parameters from URL
-  const { agreementId, price, address, landlordId, renterId, propertyId } =
-    params;
+  const {
+    agreementId,
+    price,
+    address,
+    landlordId,
+    renterId,
+    propertyId,
+    bookingId,
+  } = params;
 
   useEffect(() => {
     if (agreementId) {
@@ -93,7 +100,9 @@ const PaymentPage = () => {
         "Starting payment process for agreement:",
         agreementId,
         "with amount:",
-        price
+        price,
+        "and booking id:",
+        bookingId
       );
 
       const response = await fetch(
@@ -107,6 +116,7 @@ const PaymentPage = () => {
             agreementId: agreementId,
             amount: parseFloat(price),
             uniqueSuffix: Date.now().toString().slice(-6),
+            bookingId: bookingId,
           }),
         }
       );
@@ -119,7 +129,6 @@ const PaymentPage = () => {
       console.log("Payment initialization response:", data);
 
       if (data.success) {
-        // Store payment parameters to pass to PaymentBridge
         setEsewaParams({
           pid: data.paymentParams.pid,
           amount: data.paymentParams.amt,
@@ -130,6 +139,7 @@ const PaymentPage = () => {
           propertyId,
           landlordId,
           renterId,
+          bookingId,
           address,
           apiBaseUrl: API_BASE_URL,
         });
@@ -149,31 +159,86 @@ const PaymentPage = () => {
     }
   };
 
-  // Check payment status after redirect
   const checkPaymentStatus = async (paymentId) => {
     try {
-      console.log("Checking payment status for id:", paymentId);
+      console.log(
+        "Checking payment status for id:",
+        paymentId,
+        "using agreement:",
+        agreementId
+      );
+
+      if (!agreementId) {
+        console.warn("No agreement ID available for payment verification");
+        return null;
+      }
+
+      // Get payments data directly using ApiHandler
+      // ApiHandler already handles response status internally, so we get data directly
+      const payments = await ApiHandler.get(
+        `/Payments/byAgreementId/${agreementId}`,
+        {
+          status: "Completed",
+        }
+      );
+
+      console.log("Payments found for agreement:", payments);
+
+      if (payments && payments.length > 0) {
+        // Try to find the specific payment we're looking for
+        const targetPayment = payments.find((p) => p.paymentId == paymentId);
+
+        // If found, use it, otherwise use the most recent payment
+        const verifiedPayment = targetPayment || payments[0];
+
+        console.log("Verified payment:", verifiedPayment);
+        setPaymentData(verifiedPayment);
+        setPaymentState(PAYMENT_STATES.SUCCESS);
+        return verifiedPayment;
+      }
+
+      console.log("No payments found for agreement:", agreementId);
+      return null;
+    } catch (error) {
+      console.error("Payment status check error:", error);
+      return null;
+    }
+  };
+  // For direct booking status update if needed
+  const updateBookingStatusDirectly = async (bookingId) => {
+    try {
+      if (!bookingId) {
+        console.warn("No booking ID provided for direct update");
+        return false;
+      }
+
+      console.log("Directly updating booking status for ID:", bookingId);
+
+      // Use the direct endpoint we created
       const response = await fetch(
-        `${API_BASE_URL}/esewa/payment/${paymentId}`
+        `${API_BASE_URL}/esewa/updateBookingStatus`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bookingId: bookingId,
+            status: "Approved",
+          }),
+        }
       );
 
       if (!response.ok) {
         throw new Error(`Server responded with status: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log("Payment status response:", data);
-
-      if (data.success && data.payment) {
-        setPaymentData(data.payment);
-        setPaymentState(PAYMENT_STATES.SUCCESS);
-        return data.payment;
-      }
-
-      return null;
+      const result = await response.json();
+      console.log("Booking status update result:", result);
+      return true;
     } catch (error) {
-      console.error("Payment status check error:", error);
-      return null;
+      console.error("Error updating booking status directly:", error);
+      return false;
     }
   };
 
@@ -190,6 +255,12 @@ const PaymentPage = () => {
           // Ensure paymentId is set
           paymentId: verifiedPayment.paymentId || paymentResult.paymentId,
         });
+
+        // Update booking status if needed - though it should already be done in backend
+        if (bookingId) {
+          // Only as a backup if backend fails
+          await updateBookingStatusDirectly(bookingId);
+        }
       } else {
         setPaymentData(paymentResult);
       }
@@ -245,6 +316,7 @@ const PaymentPage = () => {
       renterId,
       propertyId,
       agreementId,
+      bookingId,
       address,
     });
 
@@ -259,6 +331,7 @@ const PaymentPage = () => {
         renterId={renterId}
         propertyId={propertyId}
         agreementId={agreementId}
+        bookingId={bookingId}
         address={address}
       />
     );
