@@ -38,6 +38,8 @@ const ChatList = () => {
 
     const fetchData = async () => {
       try {
+        setLoading(true);
+
         // Get current Firebase user
         const auth = getAuth();
         const currentUser = auth.currentUser;
@@ -49,31 +51,58 @@ const ChatList = () => {
         }
 
         const firebaseId = currentUser.uid;
+        console.log("Current Firebase ID:", firebaseId);
         if (isMounted) setCurrentUserId(firebaseId);
 
         // Get user ID from Firebase ID
-        const userId = await getUserDataFromFirebaseId(firebaseId);
-        if (!userId) {
+        try {
+          const userId = await getUserDataFromFirebaseId(firebaseId);
+          console.log("Current User ID:", userId);
+
+          if (!userId) {
+            console.log("Current user ID not found in database");
+            if (isMounted) setLoading(false);
+            return;
+          }
+
+          // Fetch renter name in parallel
+          ApiHandler.get(`/UserDetails/userId/${userId}`)
+            .then((response) => {
+              if (response && isMounted) {
+                const { firstName = "", lastName = "" } = response;
+                setRenterName(`${firstName} ${lastName}`.trim() || "Me");
+              }
+            })
+            .catch((error) => {
+              console.error("Error fetching renter's details:", error);
+            });
+        } catch (error) {
+          console.error("Error getting user ID from Firebase ID:", error);
           if (isMounted) setLoading(false);
           return;
         }
 
-        // Fetch renter name - don't await this, let it run in parallel
-        ApiHandler.get(`/UserDetails/userId/${userId}`)
-          .then((response) => {
-            if (response && isMounted) {
-              const { firstName, lastName } = response;
-              setRenterName(`${firstName} ${lastName}`);
-            }
-          })
-          .catch((error) => {
-            console.error("Error fetching renter's details:", error);
-          });
+        // Get associated users with proper error handling
+        let associatedFirebaseIds = [];
+        try {
+          associatedFirebaseIds = await getAssociatedUsers(firebaseId);
+          console.log("Associated Firebase IDs:", associatedFirebaseIds);
+        } catch (error) {
+          console.error("Error getting associated users:", error);
+          if (isMounted) {
+            setLoading(false);
+            setChatUsers([]);
+          }
+          return;
+        }
 
-        // Get associated users
-        const associatedFirebaseIds = await getAssociatedUsers(firebaseId);
+        // Filter out any undefined or invalid IDs
+        const validAssociatedIds = (associatedFirebaseIds || []).filter(
+          (id) => id && typeof id === "string" && id.length > 0
+        );
+        console.log("Valid Associated IDs:", validAssociatedIds);
 
-        if (!associatedFirebaseIds || associatedFirebaseIds.length === 0) {
+        if (validAssociatedIds.length === 0) {
           if (isMounted) {
             setChatUsers([]);
             setLoading(false);
@@ -85,40 +114,78 @@ const ChatList = () => {
         const users = [];
         const batchSize = 3; // Process 3 users at a time
 
-        for (let i = 0; i < associatedFirebaseIds.length; i += batchSize) {
-          const batch = associatedFirebaseIds.slice(i, i + batchSize);
-
-          // Process this batch in parallel
-          const batchResults = await Promise.all(
-            batch.map(async (fbId) => {
-              try {
-                const userId = await getUserDataFromFirebaseId(fbId);
-                if (!userId) return null;
-
-                const userDetails = await ApiHandler.get(
-                  `/UserDetails/userId/${userId}`
-                );
-                let fullName = "Unknown User";
-
-                if (userDetails) {
-                  const { firstName, lastName } = userDetails;
-                  fullName = `${firstName} ${lastName}`;
-                }
-
-                return { firebaseId: fbId, userId, fullName };
-              } catch (error) {
-                console.error(`Error processing user ${fbId}:`, error);
-                return null;
-              }
-            })
+        for (let i = 0; i < validAssociatedIds.length; i += batchSize) {
+          const batch = validAssociatedIds.slice(i, i + batchSize);
+          console.log(
+            `Processing batch ${i / batchSize + 1} of ${Math.ceil(
+              validAssociatedIds.length / batchSize
+            )}`
           );
 
-          // Add valid results to our users array
-          users.push(...batchResults.filter(Boolean));
+          // Process this batch in parallel with better error handling
+          const batchPromises = batch.map(async (fbId) => {
+            try {
+              // Skip if fbId is undefined or invalid
+              if (!fbId) {
+                console.log("Skipping undefined firebase ID");
+                return null;
+              }
 
-          // Update the UI with what we have so far
-          if (isMounted) {
-            setChatUsers([...users]);
+              console.log(`Processing Firebase ID: ${fbId}`);
+              const userId = await getUserDataFromFirebaseId(fbId);
+
+              if (!userId) {
+                console.log(`No user ID found for Firebase ID: ${fbId}`);
+                return null;
+              }
+
+              console.log(`Found user ID: ${userId} for Firebase ID: ${fbId}`);
+
+              // Get user details
+              const userDetails = await ApiHandler.get(
+                `/UserDetails/userId/${userId}`
+              );
+              if (!userDetails) {
+                console.log(`No user details found for user ID: ${userId}`);
+                return null;
+              }
+
+              const { firstName = "", lastName = "" } = userDetails;
+              const fullName =
+                `${firstName} ${lastName}`.trim() || "Unknown User";
+
+              return {
+                firebaseId: fbId,
+                userId,
+                fullName,
+                firstName: firstName || "",
+                lastName: lastName || "",
+              };
+            } catch (error) {
+              console.error(`Error processing user ${fbId}:`, error);
+              return null;
+            }
+          });
+
+          try {
+            // Wait for all promises to resolve
+            const batchResults = await Promise.all(batchPromises);
+
+            // Add valid results to our users array
+            const validResults = batchResults.filter(Boolean);
+            console.log(
+              `Found ${validResults.length} valid users in this batch`
+            );
+
+            users.push(...validResults);
+
+            // Update the UI with what we have so far
+            if (isMounted) {
+              setChatUsers([...users]);
+            }
+          } catch (error) {
+            console.error("Error processing batch:", error);
+            // Continue to next batch even if this one failed
           }
         }
 
