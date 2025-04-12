@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ApiHandler from "../../api/ApiHandler.jsx";
 import {
   listenForUserNotifications,
   markNotificationAsRead,
@@ -108,7 +109,7 @@ const NotificationScreen = () => {
       .substr(-2)}`;
   };
 
-  const handleNotificationPress = (notification) => {
+  const handleNotificationPress = async (notification) => {
     // Mark as read in UI and Firebase
     setNotifications((prev) =>
       prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
@@ -121,12 +122,126 @@ const NotificationScreen = () => {
     if (notification.data) {
       switch (notification.data.action) {
         case "view_agreement":
-          router.push({
-            pathname: "/(pages)/agreement-page",
-            params: {
-              agreementId: notification.data.agreementId,
-            },
-          });
+          try {
+            // Show loading indicator
+            setLoading(true);
+
+            const agreementId = notification.data.agreementId;
+            if (!agreementId) {
+              console.error("No agreement ID in notification");
+              return;
+            }
+
+            // 1. Fetch agreement details
+            const agreement = await ApiHandler.get(
+              `/Agreements/${agreementId}`
+            );
+            if (!agreement) {
+              console.error("Agreement not found");
+              return;
+            }
+
+            // 2. Fetch booking details
+            const bookingId = agreement.bookingId;
+            if (!bookingId) {
+              console.error("No booking ID in agreement");
+              return;
+            }
+
+            const booking = await ApiHandler.get(`/Bookings/${bookingId}`);
+            if (!booking) {
+              console.error("Booking not found");
+              return;
+            }
+
+            // 3. Fetch property details
+            const propertyId = booking.propertyId;
+            if (!propertyId) {
+              console.error("No property ID in booking");
+              return;
+            }
+
+            const property = await ApiHandler.get(`/Properties/${propertyId}`);
+            if (!property) {
+              console.error("Property not found");
+              return;
+            }
+
+            // 4. Fetch property images
+            const allImages = await ApiHandler.get("/PropertyImages");
+            const propertyImages = allImages
+              .filter((img) => img.propertyId === propertyId)
+              .map((img) => img.imageUrl);
+
+            const imagesForProperty =
+              propertyImages.length > 0
+                ? propertyImages
+                : [property.image || "https://via.placeholder.com/300.png"];
+
+            // 5. Fetch landlord details
+            const landlordId = property.landlordId;
+            let landlordName = "Unknown Owner";
+
+            if (landlordId) {
+              try {
+                const landlord = await ApiHandler.get(
+                  `/UserDetails/userId/${landlordId}`
+                );
+                if (landlord) {
+                  landlordName = `${landlord.firstName || ""} ${
+                    landlord.lastName || ""
+                  }`.trim();
+                }
+              } catch (error) {
+                console.error("Error fetching landlord:", error);
+              }
+            }
+
+            // 6. Navigate to the agreement page with all parameters
+            router.push({
+              pathname: "/(pages)/agreement-page",
+              params: {
+                propertyId: property.propertyId,
+                image: imagesForProperty[0],
+                imagesData: JSON.stringify(imagesForProperty),
+                address: `${property.city}, ${property.municipality} - ${property.ward}`,
+                bedrooms: property.totalBedrooms,
+                bathrooms: property.totalWashrooms,
+                kitchen: property.totalKitchens,
+                price: property.price,
+                bookingId: booking.bookingId,
+                agreementId: agreement.agreementId,
+                renterId: agreement.renterId,
+                landlordId: property.landlordId,
+                landlordName: landlordName,
+                startDate: agreement.startDate,
+                endDate: agreement.endDate,
+              },
+            });
+          } catch (error) {
+            console.error("Error navigating to agreement:", error);
+            Alert.alert(
+              "Navigation Error",
+              "Could not load the agreement details. Please try again."
+            );
+          } finally {
+            setLoading(false);
+          }
+          break;
+
+        case "view_payment":
+        case "view_payment_receipt":
+          // Add payment navigation if needed
+          if (notification.data.paymentId) {
+            router.push({
+              pathname: "/(pages)/payment-details",
+              params: {
+                paymentId: notification.data.paymentId,
+                agreementId: notification.data.agreementId,
+                propertyId: notification.data.propertyId,
+              },
+            });
+          }
           break;
 
         case "property_update":
@@ -136,11 +251,13 @@ const NotificationScreen = () => {
           });
           break;
 
-        case "payment_received":
-          router.push({
-            pathname: "/(pages)/payment",
-            params: { id: notification.data.paymentId },
-          });
+        case "booking_request":
+          if (notification.data.bookingId) {
+            router.push({
+              pathname: "/(pages)/booking-details",
+              params: { bookingId: notification.data.bookingId },
+            });
+          }
           break;
 
         case "view_chat":
