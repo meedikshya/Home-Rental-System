@@ -10,6 +10,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useAgreementExpirationCheck } from "../hooks/useAgreementExpirationCheck.js";
 
 import { useColorScheme } from "../hooks/useColorScheme";
 import * as NotificationHelper from "../firebaseNotification.js";
@@ -22,6 +23,8 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+
+  const { lastCheckTime } = useAgreementExpirationCheck();
 
   // Initialize notifications system - simplified
   useEffect(() => {

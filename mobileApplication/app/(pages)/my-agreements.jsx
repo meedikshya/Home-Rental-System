@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import ApiHandler from "../../api/ApiHandler";
 import { getUserDataFromFirebase } from "../../context/AuthContext";
+import ExpiredAgreementsScreen from "../(pages)/expired-agreements.jsx";
 
 const { width } = Dimensions.get("window");
 
@@ -26,6 +27,7 @@ const MyAgreements = () => {
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [activeTab, setActiveTab] = useState("active");
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [agreements, setAgreements] = useState([]);
@@ -63,13 +65,22 @@ const MyAgreements = () => {
       );
 
       if (response && Array.isArray(response)) {
-        setAgreements(response);
+        // Only show non-expired agreements in the active tab
+        const nonExpiredAgreements = response.filter((agreement) => {
+          const endDate = new Date(agreement.endDate);
+          const today = new Date();
+          return endDate >= today && agreement.status !== "Expired";
+        });
 
+        setAgreements(nonExpiredAgreements);
+
+        // Rest of your existing fetch logic
         // Fetch property details for each agreement using booking ID
-        const bookingPromises = response.map((agreement) =>
+        const bookingPromises = nonExpiredAgreements.map((agreement) =>
           ApiHandler.get(`/Bookings/${agreement.bookingId}`)
         );
 
+        // ...existing code continues
         const bookingsData = await Promise.all(bookingPromises);
 
         // Now fetch property details using propertyId from bookings
@@ -159,27 +170,30 @@ const MyAgreements = () => {
     }
   }, [currentUserId]);
 
-  // Fetch data when component mounts or when user ID changes
+  // Rest of your existing functions...
   useEffect(() => {
-    if (currentUserId) {
+    if (currentUserId && activeTab === "active") {
       fetchAgreements();
     }
-  }, [currentUserId, fetchAgreements]);
+  }, [currentUserId, fetchAgreements, activeTab]);
 
   // Refresh data when screen is focused
   useFocusEffect(
     useCallback(() => {
-      if (currentUserId) {
+      if (currentUserId && activeTab === "active") {
         fetchAgreements();
       }
-    }, [currentUserId, fetchAgreements])
+    }, [currentUserId, fetchAgreements, activeTab])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchAgreements();
-  }, [fetchAgreements]);
+    if (activeTab === "active") {
+      fetchAgreements();
+    }
+  }, [fetchAgreements, activeTab]);
 
+  // Your existing helper functions...
   const handleViewAgreement = (agreement) => {
     // Find the associated property using the booking ID
     const property = Object.values(properties).find(
@@ -280,7 +294,8 @@ const MyAgreements = () => {
     }
   };
 
-  if (loading) {
+  // Main render method
+  if (loading && activeTab === "active") {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar backgroundColor="#20319D" barStyle="light-content" />
@@ -308,148 +323,200 @@ const MyAgreements = () => {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {agreements.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-              <FontAwesome5 name="file-contract" size={40} color="#20319D" />
+      {/* Tab Buttons */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === "active" && styles.activeTabButton,
+          ]}
+          onPress={() => setActiveTab("active")}
+        >
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === "active" && styles.activeTabButtonText,
+            ]}
+          >
+            Active Agreements
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === "expired" && styles.activeTabButton,
+          ]}
+          onPress={() => setActiveTab("expired")}
+        >
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === "expired" && styles.activeTabButtonText,
+            ]}
+          >
+            Expired Agreements
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Tab Content */}
+      {activeTab === "active" ? (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          {agreements.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconContainer}>
+                <FontAwesome5 name="file-contract" size={40} color="#20319D" />
+              </View>
+              <Text style={styles.emptyTitle}>No Active Agreements Found</Text>
+              <Text style={styles.emptyText}>
+                You don't have any active rental agreements yet. Agreements will
+                appear here once they are created.
+              </Text>
             </View>
-            <Text style={styles.emptyTitle}>No Agreements Found</Text>
-            <Text style={styles.emptyText}>
-              You don't have any rental agreements yet. Agreements will appear
-              here once they are created.
-            </Text>
-          </View>
-        ) : (
-          agreements.map((agreement) => {
-            // Find the associated property using the booking ID
-            const property = Object.values(properties).find(
-              (p) => p.bookingId === agreement.bookingId
-            );
-            if (!property) return null;
+          ) : (
+            agreements.map((agreement) => {
+              // Find the associated property using the booking ID
+              const property = Object.values(properties).find(
+                (p) => p.bookingId === agreement.bookingId
+              );
+              if (!property) return null;
 
-            // Get landlord information
-            const landlord = landlords[property.landlordId];
-            const landlordName = landlord
-              ? `${landlord.firstName || ""} ${landlord.lastName || ""}`.trim()
-              : "Unknown Owner";
+              // Get landlord information
+              const landlord = landlords[property.landlordId];
+              const landlordName = landlord
+                ? `${landlord.firstName || ""} ${
+                    landlord.lastName || ""
+                  }`.trim()
+                : "Unknown Owner";
 
-            // Parse property images
-            let propertyImage = "https://via.placeholder.com/300.png";
-            try {
-              if (property.imagesData) {
-                const parsedImages = JSON.parse(property.imagesData);
-                propertyImage =
-                  Array.isArray(parsedImages) && parsedImages.length > 0
-                    ? parsedImages[0]
-                    : property.image || propertyImage;
-              } else if (property.image) {
-                propertyImage = property.image;
+              // Parse property images
+              let propertyImage = "https://via.placeholder.com/300.png";
+              try {
+                if (property.imagesData) {
+                  const parsedImages = JSON.parse(property.imagesData);
+                  propertyImage =
+                    Array.isArray(parsedImages) && parsedImages.length > 0
+                      ? parsedImages[0]
+                      : property.image || propertyImage;
+                } else if (property.image) {
+                  propertyImage = property.image;
+                }
+              } catch (error) {
+                propertyImage = property.image || propertyImage;
               }
-            } catch (error) {
-              propertyImage = property.image || propertyImage;
-            }
 
-            return (
-              <View key={agreement.agreementId} style={styles.agreementCard}>
-                <View style={styles.agreementHeader}>
-                  {/* Status badge */}
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      { backgroundColor: getStatusBgColor(agreement.status) },
-                    ]}
-                  >
-                    <Text
+              return (
+                <View key={agreement.agreementId} style={styles.agreementCard}>
+                  <View style={styles.agreementHeader}>
+                    {/* Status badge */}
+                    <View
                       style={[
-                        styles.statusText,
-                        { color: getStatusColor(agreement.status) },
+                        styles.statusBadge,
+                        { backgroundColor: getStatusBgColor(agreement.status) },
                       ]}
                     >
-                      {agreement.status}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.dateRangeContainer}>
-                  <View style={styles.dateItem}>
-                    <Text style={styles.dateLabel}>Start Date</Text>
-                    <Text style={styles.dateValue}>
-                      {formatDate(agreement.startDate)}
-                    </Text>
-                  </View>
-                  <View style={styles.dateSeparator}>
-                    <Ionicons name="arrow-forward" size={16} color="#9CA3AF" />
-                  </View>
-                  <View style={styles.dateItem}>
-                    <Text style={styles.dateLabel}>End Date</Text>
-                    <Text style={styles.dateValue}>
-                      {formatDate(agreement.endDate)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.divider} />
-
-                <View style={styles.propertyInfoContainer}>
-                  {/* Property Image */}
-                  <Image
-                    source={{ uri: propertyImage }}
-                    style={styles.propertyImage}
-                  />
-                  <View style={styles.propertyDetails}>
-                    <Text style={styles.propertyTitle} numberOfLines={2}>
-                      {property.title}
-                    </Text>
-                    <View style={styles.locationContainer}>
-                      <Ionicons
-                        name="location-outline"
-                        size={16}
-                        color="#6B7280"
-                      />
-                      <Text style={styles.locationText} numberOfLines={1}>
-                        {property.city}, {property.municipality}
+                      <Text
+                        style={[
+                          styles.statusText,
+                          { color: getStatusColor(agreement.status) },
+                        ]}
+                      >
+                        {agreement.status}
                       </Text>
                     </View>
-                    <View style={styles.ownerContainer}>
-                      <Ionicons
-                        name="person-outline"
-                        size={16}
-                        color="#6B7280"
-                      />
-                      <Text style={styles.ownerText}>{landlordName}</Text>
+                  </View>
+
+                  <View style={styles.dateRangeContainer}>
+                    <View style={styles.dateItem}>
+                      <Text style={styles.dateLabel}>Start Date</Text>
+                      <Text style={styles.dateValue}>
+                        {formatDate(agreement.startDate)}
+                      </Text>
                     </View>
-                    <Text style={styles.priceText}>
-                      Rs. {property.price}/month
-                    </Text>
+                    <View style={styles.dateSeparator}>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={16}
+                        color="#9CA3AF"
+                      />
+                    </View>
+                    <View style={styles.dateItem}>
+                      <Text style={styles.dateLabel}>End Date</Text>
+                      <Text style={styles.dateValue}>
+                        {formatDate(agreement.endDate)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.divider} />
+
+                  <View style={styles.propertyInfoContainer}>
+                    {/* Property Image */}
+                    <Image
+                      source={{ uri: propertyImage }}
+                      style={styles.propertyImage}
+                    />
+                    <View style={styles.propertyDetails}>
+                      <Text style={styles.propertyTitle} numberOfLines={2}>
+                        {property.title}
+                      </Text>
+                      <View style={styles.locationContainer}>
+                        <Ionicons
+                          name="location-outline"
+                          size={16}
+                          color="#6B7280"
+                        />
+                        <Text style={styles.locationText} numberOfLines={1}>
+                          {property.city}, {property.municipality}
+                        </Text>
+                      </View>
+                      <View style={styles.ownerContainer}>
+                        <Ionicons
+                          name="person-outline"
+                          size={16}
+                          color="#6B7280"
+                        />
+                        <Text style={styles.ownerText}>{landlordName}</Text>
+                      </View>
+                      <Text style={styles.priceText}>
+                        Rs. {property.price}/month
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.actionButtonsContainer}>
+                    <TouchableOpacity
+                      style={styles.viewAgreementButton}
+                      onPress={() => handleViewAgreement(agreement)}
+                    >
+                      <Text style={styles.viewAgreementText}>
+                        View Agreement
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-
-                <View style={styles.actionButtonsContainer}>
-                  <TouchableOpacity
-                    style={styles.viewAgreementButton}
-                    onPress={() => handleViewAgreement(agreement)}
-                  >
-                    <Text style={styles.viewAgreementText}>View Agreement</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
+              );
+            })
+          )}
+        </ScrollView>
+      ) : (
+        // Use the imported ExpiredAgreementsScreen for the expired tab
+        <ExpiredAgreementsScreen standalonePage={false} />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Your existing styles...
   container: {
     flex: 1,
     backgroundColor: "#F5F7FA",
@@ -488,6 +555,35 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 40,
   },
+
+  // Tab Styles
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  activeTabButton: {
+    borderBottomColor: "#20319D",
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  activeTabButtonText: {
+    color: "#20319D",
+  },
+
+  // Existing Styles...
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
