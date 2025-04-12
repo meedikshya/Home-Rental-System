@@ -8,43 +8,50 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Linking,
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
-import * as WebBrowser from "expo-web-browser";
 import ApiHandler from "../../api/ApiHandler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { sendNotificationToUser } from "../../firebaseNotification.js";
+import PaymentBridge from "../../components/ui/PaymentBridge.js";
+import PaymentSuccess from "../../components/ui/PaymentSuccess.js";
+import PaymentError from "../../components/ui/PaymentError.js";
+
+const PAYMENT_STATES = {
+  INITIAL: "initial",
+  PROCESSING: "processing",
+  SUCCESS: "success",
+  ERROR: "error",
+};
+
+const API_BASE_URL =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:5001/api"
+    : "http://192.168.1.70:5001/api";
 
 const PaymentPage = () => {
-  const router = useRouter();
   const navigation = useNavigation();
   const params = useLocalSearchParams();
-  const [isLoading, setIsLoading] = useState(false);
-
   const insets = useSafeAreaInsets();
 
+  // UI state management
+  const [isLoading, setIsLoading] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(true);
+
+  // Payment flow state management
+  const [paymentState, setPaymentState] = useState(PAYMENT_STATES.INITIAL);
   const [paymentData, setPaymentData] = useState(null);
-  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const {
-    agreementId,
-    price,
-    address,
-    landlordName,
-    landlordId,
-    renterId,
-    propertyId,
-  } = params;
+  // For eSewa payment parameters
+  const [esewaParams, setEsewaParams] = useState(null);
 
-  const API_BASE_URL =
-    Platform.OS === "android"
-      ? "http://10.0.2.2:5001/api/esewa"
-      : "http://192.168.1.70:5001/api/esewa";
+  // Extract parameters from URL
+  const { agreementId, price, address, landlordId, renterId, propertyId } =
+    params;
 
   useEffect(() => {
     if (agreementId) {
@@ -70,9 +77,7 @@ const PaymentPage = () => {
       if (data && data.length > 0) {
         console.log("Found completed payment:", data[0]);
         setPaymentData(data[0]);
-        setIsPaymentCompleted(true);
-      } else {
-        console.log("No completed payments found");
+        setPaymentState(PAYMENT_STATES.SUCCESS);
       }
     } catch (error) {
       console.error("Payment status check error:", error);
@@ -92,7 +97,7 @@ const PaymentPage = () => {
       );
 
       const response = await fetch(
-        `${API_BASE_URL}/initialize-agreement-payment`,
+        `${API_BASE_URL}/esewa/initialize-agreement-payment`,
         {
           method: "POST",
           headers: {
@@ -101,165 +106,113 @@ const PaymentPage = () => {
           body: JSON.stringify({
             agreementId: agreementId,
             amount: parseFloat(price),
-            uniqueSuffix: Date.now().toString(),
+            uniqueSuffix: Date.now().toString().slice(-6),
           }),
         }
       );
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
 
       const data = await response.json();
       console.log("Payment initialization response:", data);
 
       if (data.success) {
-        const baseUrl = API_BASE_URL.replace("/api/esewa", "");
+        // Store payment parameters to pass to PaymentBridge
+        setEsewaParams({
+          pid: data.paymentParams.pid,
+          amount: data.paymentParams.amt,
+          scd: data.paymentParams.scd,
+          signature: data.payment.signature,
+          signed_field_names: data.payment.signed_field_names,
+          agreementId,
+          propertyId,
+          landlordId,
+          renterId,
+          address,
+          apiBaseUrl: API_BASE_URL,
+        });
 
-        // Create URL to our bridge page with necessary parameters
-        const bridgeUrl =
-          `${baseUrl}/api/esewa/mobile-payment-bridge?` +
-          `amount=${encodeURIComponent(data.paymentParams.amt)}` +
-          `&pid=${encodeURIComponent(data.paymentParams.pid)}` +
-          `&scd=${encodeURIComponent(data.paymentParams.scd)}` +
-          `&signature=${encodeURIComponent(data.payment.signature)}` +
-          `&signed_field_names=${encodeURIComponent(
-            data.payment.signed_field_names
-          )}`;
-
-        console.log("Opening bridge URL:", bridgeUrl);
-
-        let result;
-        if (Platform.OS === "ios") {
-          // For iOS, Safari works better with form submission
-          await Linking.openURL(bridgeUrl);
-          // Since we can't get the result from Linking, we'll check status later
-          setTimeout(() => checkPaymentStatus(agreementId), 10000);
-        } else {
-          // For Android, WebBrowser works better
-          result = await WebBrowser.openBrowserAsync(bridgeUrl);
-          console.log("Browser result:", result);
-
-          // Check payment status if not canceled
-          if (result.type !== "cancel" && result.type !== "dismiss") {
-            setTimeout(() => checkPaymentStatus(agreementId), 2000);
-          }
-        }
+        // Show payment bridge component
+        setPaymentState(PAYMENT_STATES.PROCESSING);
       } else {
-        Alert.alert("Error", data.message || "Failed to initialize payment");
+        setErrorMessage(data.message || "Failed to initialize payment");
+        setPaymentState(PAYMENT_STATES.ERROR);
       }
     } catch (error) {
       console.error("Payment error:", error);
-      Alert.alert(
-        "Error",
-        `Failed to process payment. Please check your network connection. (${error.message})`
-      );
+      setErrorMessage(error.message || "Failed to process payment");
+      setPaymentState(PAYMENT_STATES.ERROR);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const checkPaymentStatus = async (agreementId) => {
+  // Check payment status after redirect
+  const checkPaymentStatus = async (paymentId) => {
     try {
-      console.log("Checking payment status for agreement:", agreementId);
+      console.log("Checking payment status for id:", paymentId);
       const response = await fetch(
-        `${API_BASE_URL}/agreement-payment-status/${agreementId}`
+        `${API_BASE_URL}/esewa/payment/${paymentId}`
       );
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+
       const data = await response.json();
       console.log("Payment status response:", data);
 
-      if (data.success && data.payment && data.payment.status === "Completed") {
-        setIsPaymentCompleted(true);
-        setPaymentData({
-          paymentId: data.payment.id || 0,
-          agreementId: agreementId,
-          amount: data.payment.amount || price,
-          paymentStatus: "Completed",
-          paymentDate: data.payment.createdAt || new Date().toISOString(),
-          transactionId: data.payment.referenceId || "N/A",
-          referenceId: data.payment.referenceId || "N/A",
-          paymentGateway: "eSewa",
-        });
-
-        // Send notification to landlord about completed payment
-        if (landlordId) {
-          const notificationTitle = "Payment Received";
-          const notificationBody = `Payment of Rs. ${price} has been received for your property at ${address}.`;
-
-          // Additional data to be included with the notification
-          const additionalData = {
-            propertyId,
-            agreementId,
-            paymentId: data.payment.id || 0,
-            screen: "LandlordPaymentDetails", // Screen to navigate to when notification is tapped
-            action: "view_payment",
-            timestamp: new Date().toISOString(),
-          };
-
-          // Send the notification
-          await sendNotificationToUser(
-            landlordId,
-            notificationTitle,
-            notificationBody,
-            additionalData
-          );
-
-          console.log("Payment notification sent to landlord:", landlordId);
-        }
-
-        // Send confirmation notification to renter
-        if (renterId) {
-          const notificationTitle = "Payment Successful";
-          const notificationBody = `Your payment of Rs. ${price} for property at ${address} has been successfully processed.`;
-
-          const additionalData = {
-            propertyId,
-            agreementId,
-            paymentId: data.payment.id || 0,
-            screen: "RenterPaymentDetails",
-            action: "view_payment_receipt",
-            timestamp: new Date().toISOString(),
-          };
-
-          await sendNotificationToUser(
-            renterId,
-            notificationTitle,
-            notificationBody,
-            additionalData
-          );
-
-          console.log("Payment confirmation sent to renter:", renterId);
-        }
-
-        Alert.alert("Success", "Your payment was successful!", [
-          { text: "OK", onPress: () => navigation.goBack() },
-        ]);
-      } else {
-        Alert.alert(
-          "Payment Pending",
-          "Your payment is still being processed. Please check back later.",
-          [{ text: "OK" }]
-        );
+      if (data.success && data.payment) {
+        setPaymentData(data.payment);
+        setPaymentState(PAYMENT_STATES.SUCCESS);
+        return data.payment;
       }
+
+      return null;
     } catch (error) {
       console.error("Payment status check error:", error);
-      Alert.alert(
-        "Error",
-        "Could not verify payment status. Please contact support."
-      );
+      return null;
     }
   };
 
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
+  const handlePaymentSuccess = async (paymentResult) => {
+    console.log("Payment successful:", paymentResult);
 
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    // Verify payment with backend if we have payment ID
+    if (paymentResult && paymentResult.paymentId) {
+      const verifiedPayment = await checkPaymentStatus(paymentResult.paymentId);
+      if (verifiedPayment) {
+        setPaymentData({
+          ...paymentResult,
+          ...verifiedPayment,
+          // Ensure paymentId is set
+          paymentId: verifiedPayment.paymentId || paymentResult.paymentId,
+        });
+      } else {
+        setPaymentData(paymentResult);
+      }
+    } else {
+      setPaymentData(paymentResult);
+    }
+
+    setPaymentState(PAYMENT_STATES.SUCCESS);
   };
 
+  // Handle payment error from PaymentBridge component
+  const handlePaymentError = (error) => {
+    console.error("Payment failed:", error);
+    setErrorMessage(error.message || "Payment failed");
+    setPaymentState(PAYMENT_STATES.ERROR);
+  };
+
+  // Go back to initial payment state
+  const handleReturnToPayment = () => {
+    setPaymentState(PAYMENT_STATES.INITIAL);
+  };
+
+  // Loading state
   if (isCheckingPayment) {
     return (
       <View style={styles.loadingContainer}>
@@ -269,6 +222,60 @@ const PaymentPage = () => {
     );
   }
 
+  // Render based on payment state
+  if (paymentState === PAYMENT_STATES.PROCESSING && esewaParams) {
+    return (
+      <PaymentBridge
+        {...esewaParams}
+        onSuccess={handlePaymentSuccess}
+        onError={handlePaymentError}
+        onCancel={handleReturnToPayment}
+      />
+    );
+  }
+
+  if (paymentState === PAYMENT_STATES.SUCCESS && paymentData) {
+    // Log what we're passing to the success component
+    console.log("Rendering PaymentSuccess with data:", {
+      paymentId: paymentData?.paymentId || "",
+      transactionId:
+        paymentData?.transactionId || paymentData?.referenceId || "",
+      amount: paymentData?.amount || price,
+      landlordId,
+      renterId,
+      propertyId,
+      agreementId,
+      address,
+    });
+
+    return (
+      <PaymentSuccess
+        paymentId={paymentData?.paymentId || ""}
+        transactionId={
+          paymentData?.transactionId || paymentData?.referenceId || ""
+        }
+        amount={paymentData?.amount || price}
+        landlordId={landlordId}
+        renterId={renterId}
+        propertyId={propertyId}
+        agreementId={agreementId}
+        address={address}
+      />
+    );
+  }
+
+  // Show Error component
+  if (paymentState === PAYMENT_STATES.ERROR) {
+    return (
+      <PaymentError
+        message={errorMessage}
+        paymentId={paymentData?.paymentId || ""}
+        agreementId={agreementId}
+      />
+    );
+  }
+
+  // Default view - Payment options and initial info
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
@@ -288,171 +295,100 @@ const PaymentPage = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        {isPaymentCompleted ? (
-          // PAYMENT COMPLETED UI
-          <View style={styles.completedCard}>
-            {/* Success Icon */}
-            <View style={styles.successIconContainer}>
-              <View style={styles.successIconCircle}>
-                <Ionicons name="checkmark-circle" size={56} color="#10b981" />
-              </View>
-              <Text style={styles.successTitle}>Payment Complete</Text>
-              <Text style={styles.successSubtitle}>
-                Your payment has been successfully processed
+        {/* Payment details card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Payment Details</Text>
+
+          {address && (
+            <View style={styles.infoRow}>
+              <Ionicons name="location" size={20} color="#666" />
+              <Text style={styles.infoText}>{address}</Text>
+            </View>
+          )}
+
+          {price && (
+            <View style={styles.amountContainer}>
+              <Text style={styles.amountLabel}>Total Amount</Text>
+              <Text style={styles.amountValue}>Rs. {price}</Text>
+              <Text style={styles.amountSubtext}>per month</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Payment method section */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Select Payment Method</Text>
+
+          <TouchableOpacity
+            style={styles.paymentMethodButton}
+            onPress={initiateEsewaPayment}
+            disabled={isLoading}
+          >
+            <Image
+              source={{
+                uri: "https://esewa.com.np/common/images/esewa_logo.png",
+              }}
+              style={styles.esewaLogo}
+            />
+            <Text style={styles.paymentMethodText}>Pay with eSewa</Text>
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#60bb46" />
+            ) : (
+              <Ionicons name="chevron-forward" size={24} color="#60bb46" />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Payment information */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Payment Information</Text>
+          <View style={styles.infoContainer}>
+            <View style={styles.infoItem}>
+              <Ionicons
+                name="shield-checkmark"
+                size={20}
+                color="#20319D"
+                style={styles.infoIcon}
+              />
+              <Text style={styles.infoItemText}>
+                Payment will be processed securely through eSewa
               </Text>
             </View>
-
-            {/* Divider */}
-            <View style={styles.divider} />
-
-            {/* Payment Details */}
-            <View style={styles.detailsSection}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Amount Paid</Text>
-                <Text style={styles.detailValue}>
-                  Rs. {paymentData?.amount || price}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Payment Date</Text>
-                <Text style={styles.detailValue}>
-                  {formatDate(paymentData?.paymentDate)}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Payment Method</Text>
-                <Text style={styles.detailValue}>
-                  {paymentData?.paymentGateway || "eSewa"}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Status</Text>
-                <Text style={styles.statusValue}>
-                  {paymentData?.paymentStatus || "Completed"}
-                </Text>
-              </View>
+            <View style={styles.infoItem}>
+              <Ionicons
+                name="swap-horizontal"
+                size={20}
+                color="#20319D"
+                style={styles.infoIcon}
+              />
+              <Text style={styles.infoItemText}>
+                You'll be redirected to the official eSewa login page
+              </Text>
             </View>
-
-            {/* Agreement Details */}
-            <View style={styles.propertyDetailsCard}>
-              <Text style={styles.sectionTitle}>Property Details</Text>
-              <View style={styles.propertyInfo}>
-                {address && (
-                  <Text style={styles.propertyAddress}>{address}</Text>
-                )}
-              </View>
+            <View style={styles.infoItem}>
+              <Ionicons
+                name="log-in"
+                size={20}
+                color="#20319D"
+                style={styles.infoIcon}
+              />
+              <Text style={styles.infoItemText}>
+                Use your eSewa credentials to complete the payment
+              </Text>
             </View>
-
-            {/* Return Button */}
-            <TouchableOpacity
-              style={styles.returnButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.buttonText}>Return to Agreements</Text>
-            </TouchableOpacity>
+            <View style={styles.infoItem}>
+              <Ionicons
+                name="help-circle"
+                size={20}
+                color="#20319D"
+                style={styles.infoIcon}
+              />
+              <Text style={styles.infoItemText}>
+                For any issues, please contact customer support
+              </Text>
+            </View>
           </View>
-        ) : (
-          // PAYMENT NOT COMPLETED UI - SHOW REGULAR PAYMENT PAGE
-          <>
-            {/* Payment details card */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Payment Details</Text>
-
-              {address && (
-                <View style={styles.infoRow}>
-                  <Ionicons name="location" size={20} color="#666" />
-                  <Text style={styles.infoText}>{address}</Text>
-                </View>
-              )}
-
-              {price && (
-                <View style={styles.amountContainer}>
-                  <Text style={styles.amountLabel}>Total Amount</Text>
-                  <Text style={styles.amountValue}>Rs. {price}</Text>
-                  <Text style={styles.amountSubtext}>per month</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Payment method section */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Select Payment Method</Text>
-
-              <TouchableOpacity
-                style={styles.paymentMethodButton}
-                onPress={initiateEsewaPayment}
-                disabled={isLoading}
-              >
-                <Image
-                  source={{
-                    uri: "https://esewa.com.np/common/images/esewa_logo.png",
-                  }}
-                  style={styles.esewaLogo}
-                />
-                <Text style={styles.paymentMethodText}>Pay with eSewa</Text>
-                {isLoading ? (
-                  <ActivityIndicator size="small" color="#60bb46" />
-                ) : (
-                  <Ionicons name="chevron-forward" size={24} color="#60bb46" />
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Payment information */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Payment Information</Text>
-              <View style={styles.infoContainer}>
-                <View style={styles.infoItem}>
-                  <Ionicons
-                    name="shield-checkmark"
-                    size={20}
-                    color="#20319D"
-                    style={styles.infoIcon}
-                  />
-                  <Text style={styles.infoItemText}>
-                    Payment will be processed securely through eSewa
-                  </Text>
-                </View>
-                <View style={styles.infoItem}>
-                  <Ionicons
-                    name="swap-horizontal"
-                    size={20}
-                    color="#20319D"
-                    style={styles.infoIcon}
-                  />
-                  <Text style={styles.infoItemText}>
-                    You'll be redirected to the official eSewa login page
-                  </Text>
-                </View>
-                <View style={styles.infoItem}>
-                  <Ionicons
-                    name="log-in"
-                    size={20}
-                    color="#20319D"
-                    style={styles.infoIcon}
-                  />
-                  <Text style={styles.infoItemText}>
-                    Use your eSewa credentials to complete the payment
-                  </Text>
-                </View>
-                <View style={styles.infoItem}>
-                  <Ionicons
-                    name="help-circle"
-                    size={20}
-                    color="#20319D"
-                    style={styles.infoIcon}
-                  />
-                  <Text style={styles.infoItemText}>
-                    For any issues, please contact customer support
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </>
-        )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -474,8 +410,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
   },
-
-  // Header Styles - matched with details-page.jsx
   headerContainer: {
     backgroundColor: "#20319D",
     shadowColor: "#000",
@@ -510,8 +444,6 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 40,
   },
-
-  // ScrollView Styles
   scrollView: {
     flex: 1,
   },
@@ -519,8 +451,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 30,
   },
-
-  // Card Styles
   card: {
     backgroundColor: "white",
     borderRadius: 12,
@@ -541,8 +471,6 @@ const styles = StyleSheet.create({
     color: "#1F2937",
     marginBottom: 16,
   },
-
-  // Info Row
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -554,8 +482,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     flex: 1,
   },
-
-  // Amount Container
   amountContainer: {
     backgroundColor: "#F9FAFB",
     padding: 16,
@@ -578,8 +504,6 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 4,
   },
-
-  // Payment Method Button
   paymentMethodButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -601,8 +525,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 16,
   },
-
-  // Info Items
   infoContainer: {
     marginTop: 8,
   },
@@ -620,103 +542,6 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     flex: 1,
     lineHeight: 22,
-  },
-
-  // Completed Payment
-  completedCard: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  successIconContainer: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  successIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#ECFDF5",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  successTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#10B981",
-    marginBottom: 8,
-  },
-  successSubtitle: {
-    fontSize: 16,
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginBottom: 24,
-  },
-  detailsSection: {
-    marginBottom: 24,
-  },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  detailLabel: {
-    fontSize: 16,
-    color: "#6B7280",
-  },
-  detailValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  statusValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#10B981",
-  },
-  propertyDetailsCard: {
-    backgroundColor: "#F9FAFB",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  propertyInfo: {
-    marginTop: 8,
-  },
-  propertyAddress: {
-    fontSize: 16,
-    color: "#4B5563",
-    lineHeight: 24,
-  },
-  returnButton: {
-    backgroundColor: "#20319D",
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "white",
   },
 });
 
