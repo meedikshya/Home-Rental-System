@@ -32,7 +32,6 @@ import {
   FiRefreshCw,
 } from "react-icons/fi";
 
-// Cache for usernames across instances
 const usernameCache = {};
 
 const NotificationPage = ({
@@ -42,14 +41,12 @@ const NotificationPage = ({
 
   onUnreadCountChange,
 }) => {
-  // Core states
   const [notifications, setNotifications] = useState([]);
   const [usernames, setUsernames] = useState({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Visibility states (controls render timing)
   const [showContent, setShowContent] = useState(false);
 
   // Cache key based on user ID
@@ -58,22 +55,17 @@ const NotificationPage = ({
     [userId]
   );
 
-  // Tracking refs
   const fetchedUserIds = useRef(new Set());
   const loadingTimeoutRef = useRef(null);
   const cachedNotifications = useRef(null);
 
-  // Calculate unread count and expose to parent
   const unreadCount = useMemo(() => {
-    // If we have notifications loaded, calculate from them
     if (Array.isArray(notifications) && notifications.length > 0) {
       const count = notifications.filter(
         (notification) => notification && !notification.read
       ).length;
 
-      // Update parent IMMEDIATELY when we have fresh data
       if (onUnreadCountChange && typeof onUnreadCountChange === "function") {
-        // Call on next tick to avoid React state update conflicts
         setTimeout(() => {
           onUnreadCountChange(count);
         }, 0);
@@ -82,15 +74,12 @@ const NotificationPage = ({
       return count;
     }
 
-    // Otherwise use the existing count passed from parent
     return existingUnreadCount || 0;
   }, [notifications, existingUnreadCount, onUnreadCountChange]);
 
-  // Fetch user's name from API with caching - DEFINED FIRST
   const fetchUserName = useCallback(async (userId) => {
     if (!userId) return;
 
-    // Check module cache first
     if (usernameCache[userId]) {
       setUsernames((prev) => ({
         ...prev,
@@ -105,7 +94,6 @@ const NotificationPage = ({
         const { firstName, lastName } = response;
         const fullName = `${firstName} ${lastName}`;
 
-        // Add to both state and module cache
         setUsernames((prev) => ({
           ...prev,
           [userId]: fullName,
@@ -113,7 +101,6 @@ const NotificationPage = ({
 
         usernameCache[userId] = fullName;
 
-        // Update local storage cache
         try {
           const cachedUsernames =
             localStorage.getItem("notification_usernames") || "{}";
@@ -129,7 +116,6 @@ const NotificationPage = ({
       }
     } catch (error) {
       console.error("Error fetching user name:", error);
-      // Use fallback name
       const fallbackName = `User ${userId.substring(0, 4)}`;
       setUsernames((prev) => ({
         ...prev,
@@ -139,7 +125,6 @@ const NotificationPage = ({
     }
   }, []);
 
-  // Fetch sender username with debouncing - DEFINED SECOND
   const fetchSenderUsername = useCallback(
     (senderId) => {
       if (
@@ -155,7 +140,6 @@ const NotificationPage = ({
     [usernames, fetchUserName]
   );
 
-  // Helper function to handle navigation - DEFINED THIRD
   const handleNavigation = useCallback(
     (notification) => {
       if (!notification.data) return;
@@ -187,19 +171,16 @@ const NotificationPage = ({
     [navigateFunction]
   );
 
-  // Try to load from persistent cache first
   useEffect(() => {
     setShowContent(false);
     setLoading(true);
 
-    // First try to get cached HTML from localStorage
     const cachedHtml = localStorage.getItem(`notifications_html_${userId}`);
     const cachedTimestamp = localStorage.getItem(
       `notifications_html_timestamp_${userId}`
     );
     const currentTime = Date.now();
 
-    // Use cached HTML if available and fresh (less than 30 minutes old)
     if (
       cachedHtml &&
       cachedTimestamp &&
@@ -209,7 +190,6 @@ const NotificationPage = ({
         .getElementById("notifications-container")
         ?.setAttribute("data-cached", "true");
 
-      // Also get the cached raw data for interactive features
       try {
         const cachedData = localStorage.getItem(cacheKey);
         if (cachedData) {
@@ -218,9 +198,7 @@ const NotificationPage = ({
             setNotifications(data);
             cachedNotifications.current = data;
 
-            // Show immediately since we're using pre-rendered HTML
             setLoading(false);
-            // Show with a tiny delay for smoother transition
             setTimeout(() => setShowContent(true), 10);
             return;
           }
@@ -230,16 +208,13 @@ const NotificationPage = ({
       }
     }
 
-    // If no cached HTML or expired, try to load from data cache
     try {
       const cachedData = localStorage.getItem(cacheKey);
       if (cachedData) {
         const { data, timestamp } = JSON.parse(cachedData);
-        // Use cache if less than 15 minutes old
         if (timestamp && currentTime - timestamp < 15 * 60 * 1000) {
           setNotifications(data);
 
-          // Short delay to prevent flickering
           loadingTimeoutRef.current = setTimeout(() => {
             setLoading(false);
             setShowContent(true);
@@ -250,18 +225,13 @@ const NotificationPage = ({
     } catch (e) {
       console.error("Error loading from cache", e);
     }
-
-    // If no cache or expired, we'll load from server (handled in another effect)
   }, [cacheKey, userId]);
 
-  // Fetch and set up database data
   useEffect(() => {
-    // Skip if we loaded from cache
     if (showContent && !refreshing) return;
 
     const fetchNotifications = async () => {
       try {
-        // Get Firebase ID for current user
         const firebaseId = await getFirebaseIdFromUserId(userId);
         if (!firebaseId && !userId) {
           setLoading(false);
@@ -269,23 +239,19 @@ const NotificationPage = ({
           return;
         }
 
-        // Create a combined query with 'in' operator for better performance
         const receiverIds = [];
         if (firebaseId) {
           receiverIds.push(firebaseId);
-          // Cache for future use
           localStorage.setItem(`firebase_id_${userId}`, firebaseId);
         }
 
         if (userId) {
           receiverIds.push(userId.toString());
-          // Also try numeric ID if string is provided
           if (!isNaN(userId)) {
             receiverIds.push(Number(userId));
           }
         }
 
-        // Single optimized query with increased limit
         const notificationsQuery = query(
           collection(FIREBASE_DB, "notifications"),
           where("receiverId", "in", receiverIds),
@@ -293,7 +259,7 @@ const NotificationPage = ({
           limit(100)
         );
 
-        // Fetch all notifications at once (no real-time updates needed)
+        // Fetch all notifications at once
         const snapshot = await getDocs(notificationsQuery);
 
         // Process all docs at once
@@ -303,7 +269,6 @@ const NotificationPage = ({
         snapshot.docs.forEach((doc) => {
           const id = doc.id;
 
-          // Skip if already processed (deduplication)
           if (processedIds.has(id)) return;
           processedIds.add(id);
 
@@ -343,13 +308,11 @@ const NotificationPage = ({
           console.error("Error caching notifications", e);
         }
 
-        // After a small delay, show everything
         setTimeout(() => {
           setLoading(false);
           setRefreshing(false);
           setShowContent(true);
 
-          // Once rendered, save the HTML for even faster future loads
           setTimeout(() => {
             const container = document.getElementById("notifications-list");
             if (container) {
@@ -414,14 +377,11 @@ const NotificationPage = ({
   const markAllAsRead = useCallback(() => {
     if (!notifications.length) return;
 
-    // Get unread notifications
     const unreadNotifications = notifications.filter((n) => !n.read);
     if (!unreadNotifications.length) return;
 
-    // Update UI immediately
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
 
-    // Also update cache
     try {
       const cachedData = localStorage.getItem(cacheKey);
       if (cachedData) {
@@ -439,7 +399,6 @@ const NotificationPage = ({
           })
         );
 
-        // Update the HTML cache too
         setTimeout(() => {
           const container = document.getElementById("notifications-list");
           if (container) {
@@ -462,7 +421,6 @@ const NotificationPage = ({
       console.error("Error updating notification cache", e);
     }
 
-    // Mark each as read in database
     Promise.all(
       unreadNotifications.map((n) => markNotificationAsRead(n.id))
     ).catch((error) => {
@@ -470,21 +428,17 @@ const NotificationPage = ({
     });
   }, [notifications, cacheKey, userId]);
 
-  // Handle notification click with optimistic update
   const handleNotificationPress = useCallback(
     (notification) => {
-      // Skip if already read
       if (notification.read) {
         handleNavigation(notification);
         return;
       }
 
-      // Update UI immediately (optimistic update)
       setNotifications((prev) =>
         prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
       );
 
-      // Also update the cache
       try {
         const cachedData = localStorage.getItem(cacheKey);
         if (cachedData) {
@@ -505,11 +459,9 @@ const NotificationPage = ({
         console.error("Error updating notification cache", e);
       }
 
-      // Mark as read in database
       markNotificationAsRead(notification.id).catch((error) => {
         console.error("Error marking notification as read:", error);
 
-        // If it fails, revert the optimistic update
         setNotifications((prev) =>
           prev.map((n) =>
             n.id === notification.id ? { ...n, read: false } : n
@@ -517,13 +469,11 @@ const NotificationPage = ({
         );
       });
 
-      // Handle navigation
       handleNavigation(notification);
     },
     [cacheKey, handleNavigation]
   );
 
-  // Get notification type icon and color - memoized
   const getNotificationTypeInfo = useCallback((notification) => {
     if (!notification.data || !notification.data.action) {
       return {
@@ -603,7 +553,6 @@ const NotificationPage = ({
     }
   }, []);
 
-  // Format relative time - memoized
   const formatTimeAgo = useCallback((timestamp) => {
     if (!timestamp) return "";
 
