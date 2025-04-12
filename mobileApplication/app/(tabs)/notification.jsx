@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
 import { getAuth } from "firebase/auth";
 import { useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
+import { useNotifications } from "../../context/NotificationContext";
 
 const NotificationScreen = () => {
   const [notifications, setNotifications] = useState([]);
@@ -27,10 +28,21 @@ const NotificationScreen = () => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const navigation = useNavigation();
+  const { updateUnreadCount } = useNotifications();
+
+  const prevUnreadCountRef = useRef(0);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((notification) => !notification.read).length;
   }, [notifications]);
+
+  useEffect(() => {
+    // Only update if count has changed
+    if (prevUnreadCountRef.current !== unreadCount) {
+      prevUnreadCountRef.current = unreadCount;
+      updateUnreadCount(unreadCount);
+    }
+  }, [unreadCount, updateUnreadCount]);
 
   const getNotificationTypeInfo = (notification) => {
     if (!notification.data || !notification.data.action) {
