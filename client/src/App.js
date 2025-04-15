@@ -141,7 +141,8 @@ function App() {
                     />
                     <Route
                       path="notifications"
-                      element={<NotificationPage />}
+                      element={<NotificationPage
+                       />}
                     />
                     <Route
                       path="upload-images/:propertyId"

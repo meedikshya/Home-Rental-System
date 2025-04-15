@@ -148,7 +148,7 @@ const NotificationPage = ({
 
       switch (notification.data.action) {
         case "view_agreement":
-          navigate(`/landlord/booking/${notification.data.agreementId}`);
+          navigate(`/landlord/agreements`);
           break;
         case "booking_request":
           navigate(`/landlord/booking/${notification.data.bookingId}`);
@@ -156,8 +156,11 @@ const NotificationPage = ({
         case "property_update":
           navigate(`/landlord/property/${notification.data.propertyId}`);
           break;
+        case "view_payment_receipt":
+        case "view_payment":
         case "payment_received":
-          navigate(`/landlord/payment/${notification.data.paymentId}`);
+          console.log("Navigating to payment page");
+          navigate(`/landlord/payment`);
           break;
         case "view_chat":
           navigate(`/landlord/chat/${notification.data.chatId}`);
@@ -510,6 +513,8 @@ const NotificationPage = ({
           lightBg: "bg-purple-50",
           text: "Property",
         };
+      case "view_payment_receipt":
+      case "view_payment":
       case "payment_received":
         return {
           icon: <FiDollarSign size={14} />,

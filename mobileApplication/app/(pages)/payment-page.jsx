@@ -30,7 +30,7 @@ const PAYMENT_STATES = {
 const API_BASE_URL =
   Platform.OS === "android"
     ? "http://10.0.2.2:5001/api"
-    : "http://192.168.1.70:5001/api";
+    : "http://100.64.246.118:5001/api";
 
 const PaymentPage = () => {
   const navigation = useNavigation();

@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import {
@@ -21,6 +27,8 @@ import {
 // Create a cache for user details to avoid repeated API calls
 const userCache = {};
 const messageCache = {};
+// Add a new ID mapping cache to avoid repeated ID resolution calls
+const idMappingCache = {};
 
 const ChatList = () => {
   const navigate = useNavigate();
@@ -38,8 +46,10 @@ const ChatList = () => {
     const auth = getAuth();
     const currentUser = auth.currentUser;
     if (currentUser) {
+      console.log("Current user found with Firebase ID:", currentUser.uid);
       setCurrentUserId(currentUser.uid);
     } else {
+      console.log("No authenticated user found");
       setLoading(false);
       setInitialLoad(false);
       setError("User not authenticated");
@@ -55,6 +65,71 @@ const ChatList = () => {
     };
   }, []);
 
+  // Improved resolveUserId function with numeric ID fallback (key fix)
+  const resolveUserId = async (firebaseId) => {
+    // Check cache first
+    if (idMappingCache[firebaseId]) {
+      console.log(
+        `Using cached user ID ${idMappingCache[firebaseId]} for Firebase ID ${firebaseId}`
+      );
+      return idMappingCache[firebaseId];
+    }
+
+    try {
+      // IMPORTANT CHANGE: If the firebaseId looks like a numeric ID, just use it directly
+      // This is crucial for your system where sometimes the ID is already numeric
+      if (!isNaN(firebaseId) && firebaseId.length < 10) {
+        console.log(`Using numeric ID ${firebaseId} directly`);
+        idMappingCache[firebaseId] = firebaseId;
+        return firebaseId;
+      }
+
+      // Try to get user ID from Firebase ID
+      console.log(
+        `Attempting to resolve user ID for Firebase ID: ${firebaseId}`
+      );
+      const userId = await getUserDataFromFirebaseId(firebaseId);
+
+      if (userId) {
+        console.log(
+          `Successfully resolved Firebase ID ${firebaseId} to user ID ${userId}`
+        );
+        idMappingCache[firebaseId] = userId;
+        return userId;
+      }
+
+      // Try alternate endpoint if available
+      try {
+        const response = await ApiHandler.get(
+          `/Users/by-firebase/${firebaseId}`
+        );
+        if (response && response.id) {
+          console.log(`Found user ID ${response.id} via alternate endpoint`);
+          idMappingCache[firebaseId] = response.id;
+          return response.id;
+        }
+      } catch (altError) {
+        console.log(`Alternate endpoint failed for ${firebaseId}:`, altError);
+      }
+
+      console.log(`Failed to resolve user ID for Firebase ID: ${firebaseId}`);
+      return null;
+    } catch (error) {
+      console.error(`Error resolving user ID for ${firebaseId}:`, error);
+
+      // Final fallback: If firebaseId is numeric, use it as the userId
+      if (!isNaN(firebaseId)) {
+        console.log(
+          `Fallback: Using numeric firebaseId ${firebaseId} as userId`
+        );
+        idMappingCache[firebaseId] = firebaseId;
+        return firebaseId;
+      }
+
+      return null;
+    }
+  };
+
   // Initial load - fetch landlord name and first few chat users
   useEffect(() => {
     if (!currentUserId) return;
@@ -65,37 +140,82 @@ const ChatList = () => {
 
     const quickLoad = async () => {
       try {
-        // Start fetching landlord name
+        console.log("Starting quick load for user:", currentUserId);
+
+        // Start fetching landlord name in parallel
         fetchLandlordName(currentUserId).catch((err) =>
           console.error("Error fetching landlord name:", err)
         );
 
-        // Quick load the first few users
-        const associatedIds = await getAssociatedUsers(currentUserId);
-
-        if (!associatedIds || associatedIds.length === 0) {
+        // Get associated users with better error handling
+        let associatedIds = [];
+        try {
+          associatedIds = await getAssociatedUsers(currentUserId);
+          console.log(`Found ${associatedIds?.length || 0} associated users`);
+        } catch (error) {
+          console.error("Error getting associated users:", error);
           setChatUsers([]);
           setLoading(false);
           setInitialLoad(false);
           return;
         }
 
-        // Just load the first 3 conversations immediately
-        const initialIds = associatedIds.slice(0, 3);
-        const initialUsers = await Promise.all(
-          initialIds.map((id) => loadSingleUser(currentUserId, id, signal))
+        // Filter out any invalid IDs
+        const validAssociatedIds = (associatedIds || []).filter(
+          (id) => id && typeof id === "string" && id.length > 0
+        );
+        console.log(`${validAssociatedIds.length} valid associated IDs found`);
+
+        if (validAssociatedIds.length === 0) {
+          console.log("No valid associated users found");
+          setChatUsers([]);
+          setLoading(false);
+          setInitialLoad(false);
+          return;
+        }
+
+        // Load users in batches like in the mobile app
+        const batchSize = 3;
+        let loadedUsers = [];
+
+        // Load first batch immediately
+        const firstBatch = validAssociatedIds.slice(0, batchSize);
+        console.log(`Loading first batch of ${firstBatch.length} users`);
+
+        const firstBatchPromises = firstBatch.map((id) =>
+          loadSingleUser(currentUserId, id, signal).catch((err) => {
+            console.error(`Error loading user ${id}:`, err);
+            return null;
+          })
         );
 
-        const validUsers = initialUsers.filter(Boolean);
-        setChatUsers(validUsers);
+        const firstBatchResults = await Promise.all(firstBatchPromises);
+        const validFirstBatch = firstBatchResults.filter(Boolean);
 
-        // Show first results very quickly
-        setInitialLoad(false);
+        console.log(
+          `First batch returned ${validFirstBatch.length} valid users`
+        );
+        loadedUsers = [...validFirstBatch];
 
-        // Then load the rest in the background
-        if (associatedIds.length > 3) {
+        if (loadedUsers.length > 0) {
+          setChatUsers(loadedUsers);
+          setInitialLoad(false);
+        }
+
+        // Load remaining batches in the background
+        if (validAssociatedIds.length > batchSize) {
+          const remainingIds = validAssociatedIds.slice(batchSize);
+          console.log(
+            `Loading remaining ${remainingIds.length} users in background`
+          );
+
           setTimeout(() => {
-            loadRemainingUsers(currentUserId, associatedIds.slice(3), signal);
+            loadRemainingUsersInBatches(
+              currentUserId,
+              remainingIds,
+              loadedUsers,
+              signal
+            );
           }, 100);
         } else {
           setLoading(false);
@@ -115,26 +235,115 @@ const ChatList = () => {
     quickLoad();
   }, [currentUserId]);
 
-  // Load a single user's data (with caching)
+  // Load remaining users in batches - improved version
+  const loadRemainingUsersInBatches = async (
+    currentId,
+    remainingIds,
+    existingUsers,
+    signal
+  ) => {
+    try {
+      const batchSize = 3;
+      let allUsers = [...existingUsers];
+
+      for (let i = 0; i < remainingIds.length; i += batchSize) {
+        if (signal?.aborted) {
+          console.log("Loading aborted");
+          return;
+        }
+
+        const batch = remainingIds.slice(i, i + batchSize);
+        console.log(
+          `Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(
+            remainingIds.length / batchSize
+          )}`
+        );
+
+        // Load this batch with better error handling
+        const batchPromises = batch.map((id) =>
+          loadSingleUser(currentId, id, signal).catch((err) => {
+            console.error(`Error loading user ${id} in batch:`, err);
+            return null;
+          })
+        );
+
+        // Wait for all promises to resolve, even if some fail
+        const batchResults = await Promise.all(batchPromises);
+        const validResults = batchResults.filter(Boolean);
+
+        console.log(`Batch returned ${validResults.length} valid users`);
+
+        if (validResults.length > 0) {
+          // Add new users to our collection
+          for (const user of validResults) {
+            if (!allUsers.find((u) => u.firebaseId === user.firebaseId)) {
+              allUsers.push(user);
+            }
+          }
+
+          // Sort by timestamp and update state
+          allUsers.sort((a, b) => {
+            if (!a.timestamp) return 1;
+            if (!b.timestamp) return -1;
+            return b.timestamp.seconds - a.timestamp.seconds;
+          });
+
+          setChatUsers([...allUsers]);
+        }
+
+        // Small delay to prevent UI freezing
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      console.log("Finished loading all users");
+    } catch (error) {
+      console.error("Error loading remaining users:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load a single user's data with improved error handling
   const loadSingleUser = async (currentId, firebaseId, signal) => {
     try {
-      // Check cache first for user ID
-      let userId;
-      if (userCache[firebaseId]?.userId) {
-        userId = userCache[firebaseId].userId;
-      } else {
-        userId = await getUserDataFromFirebaseId(firebaseId);
-        if (!userId) return null;
+      console.log(`Loading data for user with Firebase ID: ${firebaseId}`);
+
+      // Important: If firebaseId is invalid, return null immediately
+      if (!firebaseId || typeof firebaseId !== "string") {
+        console.log(`Invalid Firebase ID: ${firebaseId}`);
+        return null;
       }
+
+      // Resolve numeric user ID with better error handling
+      const userId = await resolveUserId(firebaseId);
+      if (!userId) {
+        console.log(`Could not resolve userId for Firebase ID: ${firebaseId}`);
+        return null;
+      }
+
+      console.log(`Resolved Firebase ID ${firebaseId} to user ID ${userId}`);
 
       // Check cache for user details
       let userDetails;
       if (userCache[firebaseId]?.details) {
+        console.log(`Using cached details for ${firebaseId}`);
         userDetails = userCache[firebaseId].details;
       } else {
         // Fetch user details
-        userDetails = await ApiHandler.get(`/UserDetails/userId/${userId}`);
-        if (!userDetails) return null;
+        console.log(`Fetching user details for user ID: ${userId}`);
+        try {
+          userDetails = await ApiHandler.get(`/UserDetails/userId/${userId}`);
+          if (!userDetails) {
+            console.log(`No user details found for user ID: ${userId}`);
+            return null;
+          }
+        } catch (detailsError) {
+          console.error(
+            `Error fetching details for user ID ${userId}:`,
+            detailsError
+          );
+          return null;
+        }
 
         // Store in cache
         userCache[firebaseId] = {
@@ -147,12 +356,13 @@ const ChatList = () => {
       // Get message preview (check cache first)
       let messagePreview;
       const cacheKey = `${currentId}-${firebaseId}`;
+
       if (messageCache[cacheKey]) {
         messagePreview = messageCache[cacheKey];
       } else {
-        // Instead of waiting for actual messages, provide a placeholder first
+        // Return a placeholder first for better UI responsiveness
         messagePreview = {
-          message: "Loading messages...",
+          message: "Tap to start chatting",
           timestamp: null,
           count: 0,
         };
@@ -160,43 +370,51 @@ const ChatList = () => {
         // Fetch actual messages in the background
         getLastMessageOnly(currentId, firebaseId)
           .then((preview) => {
-            messageCache[cacheKey] = preview;
+            if (preview) {
+              messageCache[cacheKey] = preview;
 
-            // Update this specific user without re-rendering all users
-            setChatUsers((prevUsers) => {
-              const updatedUsers = [...prevUsers];
-              const userIndex = updatedUsers.findIndex(
-                (u) => u.firebaseId === firebaseId
-              );
+              // Update this specific user without re-rendering all users
+              setChatUsers((prevUsers) => {
+                const updatedUsers = [...prevUsers];
+                const userIndex = updatedUsers.findIndex(
+                  (u) => u.firebaseId === firebaseId
+                );
 
-              if (userIndex !== -1) {
-                updatedUsers[userIndex] = {
-                  ...updatedUsers[userIndex],
-                  lastMessage: preview.message || "No messages",
-                  timestamp: preview.timestamp,
-                  messageCount: preview.count || 0,
-                };
-              }
+                if (userIndex !== -1) {
+                  updatedUsers[userIndex] = {
+                    ...updatedUsers[userIndex],
+                    lastMessage: preview.message || "No messages",
+                    timestamp: preview.timestamp,
+                    messageCount: preview.count || 0,
+                  };
 
-              // Sort users by timestamp
-              return updatedUsers.sort((a, b) => {
-                if (!a.timestamp) return 1;
-                if (!b.timestamp) return -1;
-                return b.timestamp.seconds - a.timestamp.seconds;
+                  // Sort users by timestamp
+                  return updatedUsers.sort((a, b) => {
+                    if (!a.timestamp) return 1;
+                    if (!b.timestamp) return -1;
+                    return b.timestamp.seconds - a.timestamp.seconds;
+                  });
+                }
+
+                return prevUsers;
               });
-            });
+            }
           })
-          .catch((err) =>
-            console.error("Error fetching message preview:", err)
-          );
+          .catch((err) => {
+            console.error("Error fetching message preview:", err);
+          });
       }
 
-      const { firstName, lastName } = userDetails;
+      // Extract user name with fallbacks
+      const { firstName = "", lastName = "" } = userDetails || {};
+      const fullName = `${firstName} ${lastName}`.trim() || "Unknown User";
+
+      console.log(`Successfully loaded data for user: ${fullName}`);
 
       return {
         firebaseId,
         userId,
-        fullName: `${firstName} ${lastName}`,
+        fullName,
         lastMessage: messagePreview.message || "No messages",
         timestamp: messagePreview.timestamp,
         messageCount: messagePreview.count || 0,
@@ -207,78 +425,86 @@ const ChatList = () => {
     }
   };
 
-  // Load remaining users in the background
-  const loadRemainingUsers = async (currentId, remainingIds, signal) => {
-    try {
-      const batchSize = 3;
-
-      for (let i = 0; i < remainingIds.length; i += batchSize) {
-        if (signal.aborted) return;
-
-        const batch = remainingIds.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map((id) => loadSingleUser(currentId, id, signal))
-        );
-
-        const validResults = batchResults.filter(Boolean);
-
-        if (validResults.length > 0) {
-          setChatUsers((prevUsers) => {
-            // Combine new users with existing ones and remove duplicates
-            const combined = [...prevUsers];
-
-            for (const user of validResults) {
-              if (!combined.find((u) => u.firebaseId === user.firebaseId)) {
-                combined.push(user);
-              }
-            }
-
-            // Sort by timestamp
-            return combined.sort((a, b) => {
-              if (!a.timestamp) return 1;
-              if (!b.timestamp) return -1;
-              return b.timestamp.seconds - a.timestamp.seconds;
-            });
-          });
-        }
-
-        // Small delay to prevent UI freezing
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    } catch (error) {
-      console.error("Error loading remaining users:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Separate function to fetch landlord name
+  // Separate function to fetch landlord name with improved error handling
   const fetchLandlordName = async (firebaseId) => {
     try {
+      console.log(`Fetching landlord name for Firebase ID: ${firebaseId}`);
+
       // Check cache first
       if (userCache[firebaseId]?.userId && userCache[firebaseId]?.details) {
-        const { firstName, lastName } = userCache[firebaseId].details;
-        setLandlordName(`${firstName} ${lastName}`);
+        const { firstName = "", lastName = "" } = userCache[firebaseId].details;
+        const fullName = `${firstName} ${lastName}`.trim() || "Me";
+        console.log(`Using cached landlord name: ${fullName}`);
+        setLandlordName(fullName);
         return;
       }
 
-      const userId = await getUserDataFromFirebaseId(firebaseId);
-      if (!userId) return;
+      // Direct shortcut for numeric IDs - crucial for your system
+      if (!isNaN(firebaseId) && firebaseId.length < 10) {
+        console.log(
+          `Trying to fetch details directly with numeric ID: ${firebaseId}`
+        );
+        try {
+          const response = await ApiHandler.get(
+            `/UserDetails/userId/${firebaseId}`
+          );
+          if (response) {
+            const { firstName = "", lastName = "" } = response;
+            const fullName = `${firstName} ${lastName}`.trim() || "Me";
+            console.log(`Setting landlord name to: ${fullName}`);
+            setLandlordName(fullName);
 
-      const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
-      if (response) {
-        const { firstName, lastName } = response;
-        setLandlordName(`${firstName} ${lastName}`);
+            // Cache the response
+            userCache[firebaseId] = {
+              ...(userCache[firebaseId] || {}),
+              userId: firebaseId,
+              details: response,
+            };
+            return;
+          }
+        } catch (directError) {
+          console.log(`Direct fetch failed for ID ${firebaseId}:`, directError);
+          // Continue to try other methods
+        }
+      }
 
-        // Cache the response
-        userCache[firebaseId] = {
-          ...(userCache[firebaseId] || {}),
-          userId,
-          details: response,
-        };
+      // Resolve userId using our enhanced function
+      const userId = await resolveUserId(firebaseId);
+      if (!userId) {
+        console.log("Could not resolve landlord ID, using default name");
+        setLandlordName("Me");
+        return;
+      }
+
+      console.log(`Fetching details for landlord ID: ${userId}`);
+      try {
+        const response = await ApiHandler.get(`/UserDetails/userId/${userId}`);
+        if (response) {
+          const { firstName = "", lastName = "" } = response;
+          const fullName = `${firstName} ${lastName}`.trim() || "Me";
+          console.log(`Setting landlord name to: ${fullName}`);
+          setLandlordName(fullName);
+
+          // Cache the response
+          userCache[firebaseId] = {
+            ...(userCache[firebaseId] || {}),
+            userId,
+            details: response,
+          };
+        } else {
+          console.log("No landlord details found, using default name");
+          setLandlordName("Me");
+        }
+      } catch (error) {
+        console.error(
+          `Error fetching details for landlord ID ${userId}:`,
+          error
+        );
+        setLandlordName("Me");
       }
     } catch (error) {
       console.error("Error fetching landlord name:", error);
+      setLandlordName("Me"); // Default fallback
     }
   };
 
@@ -311,23 +537,38 @@ const ChatList = () => {
       };
     } catch (error) {
       console.error("Error getting last message:", error);
-      return { message: "Error loading message", timestamp: null, count: 0 };
+      return { message: "Tap to start chatting", timestamp: null, count: 0 };
     }
   };
 
   const handleUserClick = async (user) => {
     try {
+      console.log(`User clicked: ${user.fullName} (${user.firebaseId})`);
+
       let landlordDbId;
 
       // Use cached user ID if available
       if (userCache[currentUserId]?.userId) {
         landlordDbId = userCache[currentUserId].userId;
+        console.log(`Using cached landlord ID: ${landlordDbId}`);
       } else {
-        landlordDbId = await getUserDataFromFirebaseId(currentUserId);
-        if (!landlordDbId) return;
+        // Key fix: If currentUserId is already numeric, use it directly
+        if (!isNaN(currentUserId) && currentUserId.length < 10) {
+          landlordDbId = currentUserId;
+          console.log(`Using numeric currentUserId directly: ${landlordDbId}`);
+        } else {
+          // Otherwise resolve with improved function
+          landlordDbId = await resolveUserId(currentUserId);
+          if (!landlordDbId) {
+            console.error("Could not resolve landlord ID for navigation");
+            return;
+          }
+          console.log(`Resolved landlord ID: ${landlordDbId}`);
+        }
       }
 
       const chatId = `chat_${landlordDbId}_${user.userId}`;
+      console.log(`Navigating to chat: ${chatId}`);
 
       navigate(`/landlord/chat/${chatId}`, {
         state: {
@@ -354,80 +595,48 @@ const ChatList = () => {
     }
   };
 
-  // Filter chats based on search term
-  const filteredChats = searchTerm
-    ? chatUsers.filter((user) =>
-        user.fullName.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : chatUsers;
-
+  // Format date for message timestamps
   const formatDate = (timestamp) => {
-    if (!timestamp) return "";
-    const date = new Date(timestamp.seconds * 1000);
-    const now = new Date();
-    const isToday =
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear();
+    if (!timestamp) return "No date";
 
-    if (isToday) {
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+    try {
+      const date = new Date(timestamp.seconds * 1000);
+      const now = new Date();
+      const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) {
+        // Today - show time
+        return date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } else if (diffDays === 1) {
+        return "Yesterday";
+      } else if (diffDays < 7) {
+        // Show day name for last week
+        return date.toLocaleDateString([], { weekday: "short" });
+      } else {
+        // Show date for older messages
+        return date.toLocaleDateString([], { month: "short", day: "numeric" });
+      }
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Invalid date";
     }
-
-    return date.toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-    });
   };
 
-  if (error) {
-    return (
-      <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="bg-red-50 p-6 rounded-lg border border-red-200 text-red-700 my-4 shadow-sm">
-          <p className="flex items-center text-lg font-medium mb-2">
-            <FiInfo className="mr-2" /> Error
-          </p>
-          <p className="mb-4">{error}</p>
-          <button
-            className="px-4 py-2 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors shadow-sm flex items-center"
-            onClick={() => window.location.reload()}
-          >
-            <FiRefreshCw className="mr-2" /> Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Filter chats based on search term
+  const filteredChats = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return chatUsers;
+    }
 
-  // Show a faster initial loading state
-  if (initialLoad) {
-    return (
-      <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="mb-6 bg-[#20319D] text-white p-6 rounded-lg shadow-md">
-          <div className="h-7 w-52 bg-white/30 rounded-md animate-pulse mb-2"></div>
-          <div className="h-5 w-96 bg-white/20 rounded-md animate-pulse"></div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          {/* Skeleton loaders instead of spinner */}
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="flex items-center p-4 border-b border-gray-100"
-            >
-              <div className="h-12 w-12 rounded-full bg-gray-200 animate-pulse"></div>
-              <div className="ml-4 flex-1">
-                <div className="h-5 w-32 bg-gray-200 rounded animate-pulse mb-2"></div>
-                <div className="h-4 w-48 bg-gray-100 rounded animate-pulse"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+    return chatUsers.filter(
+      (user) =>
+        user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.lastMessage.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }
+  }, [chatUsers, searchTerm]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
