@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { useNavigate } from "react-router-dom";
 import { FIREBASE_AUTH } from "../../services/Firebase-config.js";
 import { getUserDataFromFirebase } from "../../context/AuthContext.js";
 import { toast } from "react-toastify";
@@ -15,7 +14,6 @@ import EditPropertyModal from "./EditPropertyModal.js";
 import ImageSliderModal from "./ImageSliderModal.js";
 import ActiveFilters from "./ActiveFilters.js";
 import EmptyState from "./EmptyState.js";
-// import ResultsCount from "./ResultCount.js";
 import NoMatchingProperties from "./NoMatchingProperties.js";
 import LoadingState from "./LoadingState.js";
 import ErrorState from "./ErrorState.js";
