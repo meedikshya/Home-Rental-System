@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -13,6 +13,49 @@ export const RegisterForm = () => {
   const [isSubmitting, setSubmitting] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+
+  // Password validation state (hidden from UI until submission)
+  const [passwordValidation, setPasswordValidation] = useState({
+    hasMinLength: false,
+    hasUpperCase: false,
+    hasLowerCase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+  });
+
+  // Password strength state (used internally)
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  // Validate password on each change (for internal state only)
+  useEffect(() => {
+    if (!registerPassword) {
+      setPasswordValidation({
+        hasMinLength: false,
+        hasUpperCase: false,
+        hasLowerCase: false,
+        hasNumber: false,
+        hasSpecialChar: false,
+      });
+      setPasswordStrength(0);
+      return;
+    }
+
+    const validation = {
+      hasMinLength: registerPassword.length >= 8,
+      hasUpperCase: /[A-Z]/.test(registerPassword),
+      hasLowerCase: /[a-z]/.test(registerPassword),
+      hasNumber: /[0-9]/.test(registerPassword),
+      hasSpecialChar: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(
+        registerPassword
+      ),
+    };
+
+    setPasswordValidation(validation);
+
+    // Calculate password strength (0-5)
+    const strength = Object.values(validation).filter(Boolean).length;
+    setPasswordStrength(strength);
+  }, [registerPassword]);
 
   const handleLogin = () => {
     navigate("/login");
@@ -31,12 +74,16 @@ export const RegisterForm = () => {
 
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(registerEmail)) {
-      setEmailError("Please enter a valid email.");
+      setEmailError("Please enter a valid email address.");
       return;
     }
 
-    if (registerPassword.length < 6) {
-      setPasswordError("Password must be at least 6 characters long.");
+    // Facebook-style password validation - only show errors on submission
+    if (passwordStrength < 3) {
+      // Simple one-line error message
+      setPasswordError(
+        "Your password must contain at least 8 characters, an uppercase letter, a lowercase letter, a number, and a special character."
+      );
       return;
     }
 
@@ -84,10 +131,10 @@ export const RegisterForm = () => {
         setEmailError("This email is already registered.");
         toast.error("This email address is already in use.");
       } else if (error.code === "auth/weak-password") {
-        setPasswordError("Password is too weak.");
+        setPasswordError("Please choose a stronger password.");
         toast.error("Please choose a stronger password.");
       } else if (error.code === "auth/invalid-email") {
-        setEmailError("Invalid email format.");
+        setEmailError("Please enter a valid email address.");
         toast.error("Please enter a valid email address.");
       } else {
         toast.error(`Registration error: ${error.message}`);
@@ -120,7 +167,7 @@ export const RegisterForm = () => {
                 autoComplete="email"
               />
               {emailError && (
-                <div className="text-red-500 mt-1">{emailError}</div>
+                <div className="text-red-500 mt-1 text-xs">{emailError}</div>
               )}
             </div>
             <div>
@@ -136,10 +183,12 @@ export const RegisterForm = () => {
                   setPasswordError("");
                 }}
                 value={registerPassword}
-                autoComplete="current-password"
+                autoComplete="new-password"
               />
+
+              {/* Facebook-style one-line error message only shown when needed */}
               {passwordError && (
-                <div className="text-red-500 mt-1">{passwordError}</div>
+                <div className="text-red-500 mt-2 text-xs">{passwordError}</div>
               )}
             </div>
             <div className="mt-8 flex flex-col gap-y-4">

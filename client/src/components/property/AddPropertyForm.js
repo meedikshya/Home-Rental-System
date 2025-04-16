@@ -7,7 +7,7 @@ import PropertyDetailsForm from "./PropertyDetailsForm.js";
 import PropertyImageUpload from "./PropertyImageUpload.js";
 import { FaHome, FaImages, FaCheck } from "react-icons/fa";
 
-const AddPropertyForm = () => {
+const AddPropertyForm = ({ onComplete }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [propertyId, setPropertyId] = useState(null);
   const [landlordId, setLandlordId] = useState(null);
@@ -33,6 +33,13 @@ const AddPropertyForm = () => {
 
     return () => unsubscribe();
   }, []);
+
+  const handleImageUploadComplete = () => {
+    toast.success("Property added successfully!");
+    if (onComplete) {
+      onComplete();
+    }
+  };
 
   if (loading) {
     return (
@@ -101,6 +108,7 @@ const AddPropertyForm = () => {
           <PropertyImageUpload
             propertyId={propertyId}
             setCurrentStep={setCurrentStep}
+            onUploadComplete={handleImageUploadComplete}
           />
         )}
       </div>

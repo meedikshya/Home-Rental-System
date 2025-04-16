@@ -199,7 +199,7 @@ export const downloadAgreement = async (
         "PNG",
         imgX,
         imgY,
-        imgWidth * ratio,
+        imgWidth * ratio, 
         imgHeight * ratio
       );
 

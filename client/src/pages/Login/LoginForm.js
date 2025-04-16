@@ -85,7 +85,11 @@ export const LoginForm = () => {
     // or we're coming from another page with an expired token
     if (expiredParam === "true") {
       setSessionExpired(true);
-      setError("Your session has expired. Please sign in again.");
+      // Don't set error message - only show toast
+      toast.info("Your session has expired. Please sign in again.", {
+        position: "top-right",
+        autoClose: 5000,
+      });
 
       // Clean up any stale auth data
       localStorage.removeItem("jwtToken");
@@ -105,7 +109,11 @@ export const LoginForm = () => {
       const token = localStorage.getItem("jwtToken");
       if (isTokenExpired(token)) {
         setSessionExpired(true);
-        setError("Your session has expired. Please sign in again.");
+        // Don't set error message - only show toast
+        toast.info("Your session has expired. Please sign in again.", {
+          position: "top-right",
+          autoClose: 5000,
+        });
 
         // Clean up any stale auth data
         localStorage.removeItem("jwtToken");
@@ -251,9 +259,9 @@ export const LoginForm = () => {
       signOut(FIREBASE_AUTH)
         .then(() => {
           console.log("User signed out successfully");
-          // Use toastId to prevent duplicate toasts
           toast.info("You have been signed out", {
             toastId: "logout-notification",
+            position: "top-right",
           });
         })
         .catch((error) => {
@@ -269,6 +277,7 @@ export const LoginForm = () => {
   const handleSignin = async (e) => {
     if (e) e.preventDefault();
 
+    // Clear error states
     setError("");
     setEmailError("");
     setPasswordError("");
@@ -276,14 +285,30 @@ export const LoginForm = () => {
 
     // Validation
     if (!email.trim() || !password.trim()) {
-      if (!email.trim()) setEmailError("Email is required.");
-      if (!password.trim()) setPasswordError("Password is required.");
+      if (!email.trim()) {
+        setEmailError("Email is required"); // Just for styling
+        toast.warning("Please enter your email address.", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      }
+      if (!password.trim()) {
+        setPasswordError("Password is required"); // Just for styling
+        toast.warning("Please enter your password.", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+      }
       return;
     }
 
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(email)) {
-      setEmailError("Please enter a valid email.");
+      setEmailError("Invalid email"); // Just for styling
+      toast.warning("Invalid email format. Please check your email address.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       return;
     }
 
@@ -317,11 +342,18 @@ export const LoginForm = () => {
         await FIREBASE_AUTH.signOut();
 
         toast.error(
-          "This portal is for Landlords and Admins only. Please use the appropriate app for your role."
+          "Access denied. This portal is for Landlords and Admins only.",
+          {
+            position: "top-right", // Changed from top-center
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          }
         );
-        setError(
-          `Access denied. ${userRole} users are not allowed in this portal.`
-        );
+
+        // Don't set error message - only show toast
 
         localStorage.removeItem("jwtToken");
         ApiHandler.removeToken();
@@ -344,7 +376,16 @@ export const LoginForm = () => {
       // Update last activity timestamp
       localStorage.setItem("lastUserActivity", Date.now().toString());
 
-      toast.success(`Signed in successfully as ${userRole || "User"}`);
+      toast.success(
+        `Welcome back! Signed in successfully as ${userRole || "User"}`,
+        {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+        }
+      );
 
       // Reset the logout performed ref since we're now intentionally logging in
       logoutPerformedRef.current = false;
@@ -359,33 +400,75 @@ export const LoginForm = () => {
         navigate("/");
       }
     } catch (error) {
-      let errorMessage = "An unexpected error occurred.";
+      console.error("Login error:", error);
+      let toastMessage = "Login failed. Please try again.";
 
       if (error.code) {
-        if (error.code === "auth/wrong-password") {
-          errorMessage = "Incorrect password.";
-        } else if (error.code === "auth/user-not-found") {
-          errorMessage = "User not found.";
-        } else if (error.code === "auth/too-many-requests") {
-          errorMessage =
-            "Too many failed login attempts. Please try again later.";
-        } else {
-          errorMessage = `Firebase error: ${error.message}`;
+        // Firebase authentication errors
+        switch (error.code) {
+          case "auth/wrong-password":
+            setPasswordError("Invalid"); // Just for styling
+            toastMessage = "The password you entered is incorrect.";
+            break;
+
+          case "auth/invalid-credential":
+            setPasswordError("Invalid"); // Just for styling
+            toastMessage = "The email or password you entered is incorrect.";
+            break;
+
+          case "auth/user-not-found":
+            setEmailError("Invalid"); // Just for styling
+            toastMessage = "We couldn't find an account with that email.";
+            break;
+
+          case "auth/too-many-requests":
+            toastMessage =
+              "Account temporarily locked due to multiple failed attempts.";
+            break;
+
+          case "auth/user-disabled":
+            toastMessage =
+              "Your account has been disabled. Please contact support.";
+            break;
+
+          case "auth/invalid-email":
+            setEmailError("Invalid"); // Just for styling
+            toastMessage = "Please enter a valid email address.";
+            break;
+
+          case "auth/network-request-failed":
+            toastMessage =
+              "Connection issue. Please check your internet and try again.";
+            break;
+
+          default:
+            toastMessage = "Authentication failed. Please try again.";
         }
       } else if (error.response) {
-        // Check for session expiration specifically
+        // API response errors
         if (error.response.status === 401) {
-          errorMessage =
-            "Authentication failed. Please check your credentials.";
+          toastMessage = "Invalid credentials. Please try again.";
+        } else if (error.response.status === 403) {
+          toastMessage =
+            "Access denied. Please contact support if you believe this is an error.";
+        } else if (error.response.status === 404) {
+          toastMessage = "We couldn't find your account in our system.";
         } else {
-          errorMessage = error.response.data.message || errorMessage;
+          toastMessage = "Server error. Please try again later.";
         }
       } else if (error.request) {
-        errorMessage = "Network error. Please try again.";
+        toastMessage =
+          "Connection failed. Please check your internet and try again.";
       }
 
-      setError(errorMessage);
-      toast.error(`Login error: ${errorMessage}`);
+      toast.error(toastMessage, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
 
       ApiHandler.removeToken();
       localStorage.removeItem("jwtToken");
@@ -416,7 +499,7 @@ export const LoginForm = () => {
               id="email"
               type="email"
               className={`w-full border-2 border-gray-100 p-2 mt-3 mb-4 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
-                emailError && "border-red-500"
+                emailError ? "border-red-500" : ""
               }`}
               placeholder="abc@gmail.com"
               onChange={(event) => {
@@ -426,9 +509,7 @@ export const LoginForm = () => {
               value={email}
               required
             />
-            {emailError && (
-              <div className="text-red-500 mt-1">{emailError}</div>
-            )}
+            {/* Removed inline error message */}
           </div>
           <div>
             <label className="text-sm font-medium" htmlFor="password">
@@ -438,7 +519,7 @@ export const LoginForm = () => {
               id="password"
               type="password"
               className={`w-full border-2 border-gray-100 p-2 mt-3 bg-transparent focus:border-indigo-600 focus:outline-none focus:ring-0 rounded-md ${
-                passwordError && "border-red-500"
+                passwordError ? "border-red-500" : ""
               }`}
               placeholder="password"
               onChange={(event) => {
@@ -448,11 +529,9 @@ export const LoginForm = () => {
               value={password}
               required
             />
-            {passwordError && (
-              <div className="text-red-500 mt-1">{passwordError}</div>
-            )}
+            {/* Removed inline error message */}
           </div>
-          {error && <div className="text-red-500 mt-2">{error}</div>}
+          {/* Removed general error message */}
           <div className="mt-8 flex justify-between items-center">
             <div>
               <input type="checkbox" id="remember" />
@@ -470,7 +549,14 @@ export const LoginForm = () => {
               className="py-2 bg-indigo-600 text-white text-lg rounded-md hover:bg-indigo-700 transition-colors"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Submitting..." : "Sign In"}
+              {isSubmitting ? (
+                <div className="flex items-center justify-center">
+                  <div className="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                "Sign In"
+              )}
             </button>
           </div>
           <div className="mt-5 text-center">

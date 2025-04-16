@@ -29,7 +29,7 @@ import PaginationControls from "../UI/PaginationControls.js";
 
 const AgreementList = () => {
   const [landlordId, setLandlordId] = useState(null);
-  const [agreements, setAgreements] = useState([]);
+  const [agreements, setAgreements] = useState([]); // Ensure this is initialized as an empty array
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState(null);
@@ -60,39 +60,6 @@ const AgreementList = () => {
   // Get auth token - memoized to avoid recreation
   const getAuthToken = useCallback(async () => {
     return await FIREBASE_AUTH.currentUser?.getIdToken(true);
-  }, []);
-
-  // Load cached data to improve performance
-  useEffect(() => {
-    // Load cached data from localStorage if available
-    const cachedRenterNames = localStorage.getItem("cachedRenterNames");
-    const cachedPropertyDetails = localStorage.getItem("cachedPropertyDetails");
-    const cachedAgreements = localStorage.getItem("cachedAgreements");
-
-    if (cachedRenterNames) {
-      try {
-        setRenterNames(JSON.parse(cachedRenterNames));
-      } catch (e) {
-        console.error("Error parsing cached renter names:", e);
-      }
-    }
-
-    if (cachedPropertyDetails) {
-      try {
-        setPropertyDetails(JSON.parse(cachedPropertyDetails));
-      } catch (e) {
-        console.error("Error parsing cached property details:", e);
-      }
-    }
-
-    if (cachedAgreements) {
-      try {
-        setAgreements(JSON.parse(cachedAgreements));
-        setLoading(false);
-      } catch (e) {
-        console.error("Error parsing cached agreements:", e);
-      }
-    }
   }, []);
 
   // Get user's landlord ID
@@ -130,6 +97,7 @@ const AgreementList = () => {
   useEffect(() => {
     if (!landlordId) return;
 
+    // Fixed fetchAgreements function with proper array handling
     const fetchAgreements = async () => {
       try {
         setLoading(true);
@@ -139,64 +107,35 @@ const AgreementList = () => {
           throw new Error("Authentication token not available");
         }
 
-        // Check if we need to refresh data (every 5 minutes)
-        const lastFetch = localStorage.getItem("lastAgreementFetch");
-        const now = Date.now();
-        const shouldRefresh =
-          !lastFetch || now - parseInt(lastFetch) > 5 * 60 * 1000;
-
-        let response;
-
-        if (shouldRefresh) {
-          // Fetch new data if needed
-          response = await ApiHandler.get(
-            `/Agreements/Landlord/${landlordId}`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-
-          // Cache the response
-          localStorage.setItem(
-            "cachedAgreements",
-            JSON.stringify(response || [])
-          );
-          localStorage.setItem("lastAgreementFetch", now.toString());
-
-          console.log("Fresh agreements fetched:", response);
-          setAgreements(response || []);
-        } else {
-          // Use cached data and show it immediately
-          const cachedData = localStorage.getItem("cachedAgreements");
-          if (cachedData) {
-            response = JSON.parse(cachedData);
-            console.log("Using cached agreements");
-          } else {
-            // Fallback to fetch if cache is missing
-            response = await ApiHandler.get(
-              `/Agreements/Landlord/${landlordId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              }
-            );
-            localStorage.setItem(
-              "cachedAgreements",
-              JSON.stringify(response || [])
-            );
-            console.log("Fallback agreements fetched:", response);
+        // Always fetch fresh data
+        const response = await ApiHandler.get(
+          `/Agreements/Landlord/${landlordId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           }
-          setAgreements(response || []);
+        );
+
+        console.log("Agreements fetched:", response);
+
+        // Make sure we always set an array
+        if (Array.isArray(response)) {
+          setAgreements(response);
+        } else {
+          console.warn(
+            "API returned non-array response for agreements:",
+            response
+          );
+          setAgreements([]);
         }
 
         // After main data is loaded, show the UI
         setLoading(false);
 
         // Now fetch secondary data in the background
-        if (response && response.length > 0) {
+        // Only proceed with secondary fetches if we have valid agreement data
+        if (Array.isArray(response) && response.length > 0) {
           // Extract IDs for parallel fetching
           const renterIds = [
             ...new Set(response.map((agreement) => agreement.renterId)),
@@ -219,6 +158,7 @@ const AgreementList = () => {
         console.error("Error fetching agreements:", err);
         setError("Failed to load your lease agreements");
         toast.error("Could not load agreements.");
+        setAgreements([]); // Make sure we set an empty array on error
         setLoading(false);
         setInitialLoad(false);
       }
@@ -238,13 +178,8 @@ const AgreementList = () => {
       const token = existingToken || (await getAuthToken());
       const detailsMap = { ...propertyDetails }; // Start with existing data
 
-      // Skip already loaded properties - only fetch missing ones
-      const missingIds = bookingIds.filter((id) => !detailsMap[id]);
-
-      if (missingIds.length === 0) return detailsMap;
-
       // Create a promise for each booking
-      const fetchPromises = missingIds.map(async (bookingId) => {
+      const fetchPromises = bookingIds.map(async (bookingId) => {
         try {
           // Fetch booking and property in parallel when possible
           const bookingResponse = await ApiHandler.get(
@@ -289,9 +224,6 @@ const AgreementList = () => {
       // Execute all promises in parallel
       await Promise.all(fetchPromises);
 
-      // Save to localStorage for future visits
-      localStorage.setItem("cachedPropertyDetails", JSON.stringify(detailsMap));
-
       // Final update with all data
       setPropertyDetails({ ...detailsMap });
       return detailsMap;
@@ -307,13 +239,8 @@ const AgreementList = () => {
       const token = existingToken || (await getAuthToken());
       const namesMap = { ...renterNames }; // Start with existing data
 
-      // Skip already loaded renter names - only fetch missing ones
-      const missingIds = renterIds.filter((id) => !namesMap[id]);
-
-      if (missingIds.length === 0) return namesMap;
-
       // Create a promise for each renter
-      const fetchPromises = missingIds.map(async (renterId) => {
+      const fetchPromises = renterIds.map(async (renterId) => {
         try {
           const response = await ApiHandler.get(
             `/UserDetails/userId/${renterId}`,
@@ -340,9 +267,6 @@ const AgreementList = () => {
 
       // Execute all promises in parallel
       await Promise.all(fetchPromises);
-
-      // Save to localStorage for future visits
-      localStorage.setItem("cachedRenterNames", JSON.stringify(namesMap));
 
       // Final update with all data
       setRenterNames({ ...namesMap });
@@ -413,17 +337,15 @@ const AgreementList = () => {
       });
 
       // Update local state and cache
-      const updatedAgreements = agreements.map((agreement) =>
-        agreement.agreementId === agreementId
-          ? { ...agreement, status: "Approved" }
-          : agreement
-      );
+      if (Array.isArray(agreements)) {
+        const updatedAgreements = agreements.map((agreement) =>
+          agreement.agreementId === agreementId
+            ? { ...agreement, status: "Approved" }
+            : agreement
+        );
 
-      setAgreements(updatedAgreements);
-      localStorage.setItem(
-        "cachedAgreements",
-        JSON.stringify(updatedAgreements)
-      );
+        setAgreements(updatedAgreements);
+      }
 
       // Send notification
       try {
@@ -503,17 +425,15 @@ const AgreementList = () => {
       });
 
       // Update local state and cache
-      const updatedAgreements = agreements.map((agreement) =>
-        agreement.agreementId === agreementId
-          ? { ...agreement, status: "Rejected" }
-          : agreement
-      );
+      if (Array.isArray(agreements)) {
+        const updatedAgreements = agreements.map((agreement) =>
+          agreement.agreementId === agreementId
+            ? { ...agreement, status: "Rejected" }
+            : agreement
+        );
 
-      setAgreements(updatedAgreements);
-      localStorage.setItem(
-        "cachedAgreements",
-        JSON.stringify(updatedAgreements)
-      );
+        setAgreements(updatedAgreements);
+      }
 
       // Send notification
       try {
@@ -576,41 +496,54 @@ const AgreementList = () => {
   };
 
   // Filter agreements based on active tab and search term
-  const filteredAgreements = agreements.filter((agreement) => {
-    // Status filter
-    const statusMatch = activeTab === "All" || agreement.status === activeTab;
+  // Added array check to prevent errors
+  const filteredAgreements = Array.isArray(agreements)
+    ? agreements.filter((agreement) => {
+        // Status filter
+        const statusMatch =
+          activeTab === "All" || agreement.status === activeTab;
 
-    // Search filter - check property title, renter name, or agreement ID
-    const propertyTitle = getPropertyName(agreement.bookingId).toLowerCase();
-    const renterName = getRenterName(agreement.renterId).toLowerCase();
-    const agreementId = agreement.agreementId.toString().toLowerCase();
-    const searchLower = searchTerm.toLowerCase();
+        // Search filter - check property title, renter name, or agreement ID
+        const propertyTitle = getPropertyName(
+          agreement.bookingId
+        ).toLowerCase();
+        const renterName = getRenterName(agreement.renterId).toLowerCase();
+        const agreementId = agreement.agreementId.toString().toLowerCase();
+        const searchLower = searchTerm.toLowerCase();
 
-    const searchMatch =
-      !searchTerm ||
-      propertyTitle.includes(searchLower) ||
-      renterName.includes(searchLower) ||
-      agreementId.includes(searchLower);
+        const searchMatch =
+          !searchTerm ||
+          propertyTitle.includes(searchLower) ||
+          renterName.includes(searchLower) ||
+          agreementId.includes(searchLower);
 
-    return statusMatch && searchMatch;
-  });
+        return statusMatch && searchMatch;
+      })
+    : [];
 
-  // Get counts by status
+  // Get counts by status - Added array checks to prevent errors
   const statusCounts = {
-    All: agreements.length,
-    Pending: agreements.filter((a) => a.status === "Pending").length,
-    Approved: agreements.filter((a) => a.status === "Approved").length,
-    Rejected: agreements.filter((a) => a.status === "Rejected").length,
+    All: agreements?.length || 0,
+    Pending: Array.isArray(agreements)
+      ? agreements.filter((a) => a.status === "Pending").length
+      : 0,
+    Approved: Array.isArray(agreements)
+      ? agreements.filter((a) => a.status === "Approved").length
+      : 0,
+    Rejected: Array.isArray(agreements)
+      ? agreements.filter((a) => a.status === "Rejected").length
+      : 0,
   };
 
-  // Pagination
-  const totalPages = Math.ceil(filteredAgreements.length / itemsPerPage);
+  // Pagination - Added checks to ensure filteredAgreements is an array
+  const totalPages = Math.ceil(
+    (filteredAgreements?.length || 0) / itemsPerPage
+  );
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredAgreements.slice(
-    indexOfFirstItem,
-    indexOfLastItem
-  );
+  const currentItems = Array.isArray(filteredAgreements)
+    ? filteredAgreements.slice(indexOfFirstItem, indexOfLastItem)
+    : [];
 
   // Get status badge styling
   const getStatusBadge = (status) => {
@@ -693,7 +626,7 @@ const AgreementList = () => {
   }
 
   // Render empty state
-  if (!agreements || agreements.length === 0) {
+  if (!Array.isArray(agreements) || agreements.length === 0) {
     return (
       <div className="text-center p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
         <FaFileContract className="mx-auto text-3xl text-gray-400 mb-2" />

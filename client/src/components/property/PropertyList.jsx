@@ -20,7 +20,7 @@ import NoMatchingProperties from "./NoMatchingProperties.js";
 import LoadingState from "./LoadingState.js";
 import ErrorState from "./ErrorState.js";
 
-const PropertyList = ({ onAddProperty }) => {
+const PropertyList = ({ onAddProperty, refreshTrigger }) => {
   const [landlordId, setLandlordId] = useState(null);
   const [properties, setProperties] = useState([]);
   const [propertyImages, setPropertyImages] = useState({});
@@ -87,7 +87,7 @@ const PropertyList = ({ onAddProperty }) => {
     return () => unsubscribe();
   }, []);
 
-  // Fetch properties when landlord ID is available
+  // Fetch properties when landlordId is available or when refreshTrigger changes
   useEffect(() => {
     const fetchProperties = async () => {
       if (!landlordId || !token) return;
@@ -126,7 +126,7 @@ const PropertyList = ({ onAddProperty }) => {
     if (landlordId && token) {
       fetchProperties();
     }
-  }, [landlordId, token, itemsPerPage]);
+  }, [landlordId, token, itemsPerPage, refreshTrigger]);
 
   // Optimized function to fetch and process images in one step
   const fetchPropertyImages = async (token) => {
@@ -568,6 +568,10 @@ const PropertyList = ({ onAddProperty }) => {
 
   // Get paginated properties
   const paginatedProperties = useMemo(() => {
+    // Check if properties is an array before attempting to slice
+    if (!Array.isArray(properties) || properties.length === 0) {
+      return [];
+    }
     const indexOfLastProperty = currentPage * itemsPerPage;
     const indexOfFirstProperty = indexOfLastProperty - itemsPerPage;
     return properties.slice(indexOfFirstProperty, indexOfLastProperty);
@@ -670,7 +674,7 @@ const PropertyList = ({ onAddProperty }) => {
         hasActiveFilters={hasActiveFilters}
       />
 
-      {/* Property Grid */}
+      {/* Property Grid - Updated to handle all no-properties cases */}
       {properties.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {paginatedProperties.map((property) => {
@@ -705,7 +709,71 @@ const PropertyList = ({ onAddProperty }) => {
         </div>
       ) : hasActiveFilters ? (
         <NoMatchingProperties handleResetFilters={handleResetFilters} />
-      ) : null}
+      ) : !loading && allProperties.length > 0 && properties.length === 0 ? (
+        // Handle case where there are properties but none are currently displayed
+        <div className="mt-12 text-center">
+          <div className="flex flex-col items-center justify-center p-8 bg-white border border-gray-200 rounded-lg shadow">
+            <svg
+              className="w-12 h-12 text-gray-400 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              No Properties to Display
+            </h3>
+            <p className="text-gray-500 text-center mb-4">
+              We couldn't find any properties to show at this time.
+            </p>
+            <button
+              onClick={handleResetFilters}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              Refresh Properties
+            </button>
+          </div>
+        </div>
+      ) : (
+        // Final fallback in case of any other unexpected condition
+        <div className="mt-12 text-center">
+          <div className="flex flex-col items-center justify-center p-8 bg-white border border-gray-200 rounded-lg shadow">
+            <svg
+              className="w-12 h-12 text-gray-400 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              ></path>
+            </svg>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              No Properties Found
+            </h3>
+            <p className="text-gray-500 text-center mb-4">
+              Try adding a new property to get started.
+            </p>
+            <button
+              onClick={onAddProperty}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              Add Property
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {properties.length > itemsPerPage && (

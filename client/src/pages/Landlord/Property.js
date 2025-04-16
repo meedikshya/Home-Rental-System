@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import AddPropertyForm from "../../components/property/AddPropertyForm.js";
 import { FaTimes } from "react-icons/fa";
 import PropertyList from "../../components/property/PropertyList.jsx";
 
 const Property = () => {
   const [showModal, setShowModal] = useState(false);
+  // Add a state to trigger property list refresh
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const openModal = () => {
     setShowModal(true);
@@ -16,11 +18,26 @@ const Property = () => {
     document.body.style.overflow = "auto";
   };
 
+  // Function to refresh properties
+  const refreshProperties = useCallback(() => {
+    // Increment trigger to force PropertyList to reload
+    setRefreshTrigger((prev) => prev + 1);
+  }, []);
+
+  // Combined function for closing modal and refreshing properties
+  const handlePropertyAdded = () => {
+    refreshProperties();
+    closeModal();
+  };
+
   return (
     <div className="relative min-h-screen">
-      {/* Pass the openModal function to PropertyList */}
+      {/* Pass the refreshTrigger to PropertyList */}
       <div className="mt-6">
-        <PropertyList onAddProperty={openModal} />
+        <PropertyList
+          onAddProperty={openModal}
+          refreshTrigger={refreshTrigger}
+        />
       </div>
 
       {showModal && (
@@ -41,7 +58,10 @@ const Property = () => {
 
             {/* Modal body */}
             <div className="p-6 max-h-[80vh] overflow-y-auto">
-              <AddPropertyForm onComplete={closeModal} />
+              <AddPropertyForm
+                onComplete={handlePropertyAdded}
+                refreshProperties={refreshProperties}
+              />
             </div>
           </div>
         </div>

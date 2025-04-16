@@ -19,6 +19,7 @@ const PropertyImageUpload = ({
   propertyId,
   onClose = null,
   setCurrentStep = null,
+  onUploadComplete = null,
 }) => {
   // States for images management
   const [images, setImages] = useState([]);
@@ -230,6 +231,11 @@ const PropertyImageUpload = ({
           setCurrentStep(3); // Move to next step if needed
         } else if (onClose) {
           onClose();
+        }
+
+        // Call onUploadComplete to close the modal automatically
+        if (onUploadComplete) {
+          onUploadComplete();
         }
       } else {
         toast.error("Failed to upload images. Please try again.");

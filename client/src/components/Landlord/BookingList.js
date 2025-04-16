@@ -73,7 +73,14 @@ const BookingList = () => {
       setLoadingStatuses(true);
 
       const response = await ApiHandler.get(`/Bookings/Landlord/${userId}`);
-      setBookings(response);
+
+      // Make sure bookings is always an array
+      if (Array.isArray(response)) {
+        setBookings(response);
+      } else {
+        console.warn("API returned non-array response for bookings:", response);
+        setBookings([]);
+      }
 
       // Extract unique statuses from bookings
       if (Array.isArray(response) && response.length > 0) {
@@ -86,18 +93,25 @@ const BookingList = () => {
 
         // Add "All" option at the beginning
         setStatusOptions(["All", ...uniqueStatuses]);
+
+        // Only fetch details if we have bookings
+        await fetchBookingDetails(response);
       } else {
         // Fallback in case of empty response
-        setStatusOptions(["All"]);
+        setStatusOptions([
+          "All",
+          "Pending",
+          "Approved",
+          "Rejected",
+          "Cancelled",
+        ]);
       }
-
-      // Fetch details for each booking
-      await fetchBookingDetails(response);
     } catch (error) {
       console.error("Error fetching bookings:", error);
       setError("Failed to load bookings");
       // Fallback status options in case of error
       setStatusOptions(["All", "Pending", "Approved", "Rejected", "Cancelled"]);
+      setBookings([]); // Ensure bookings is an empty array on error
     } finally {
       setLoading(false);
       setLoadingStatuses(false);
@@ -106,7 +120,8 @@ const BookingList = () => {
 
   // Filter bookings when search term or status filter changes
   useEffect(() => {
-    if (!bookings.length) {
+    // Make sure bookings is an array before filtering
+    if (!Array.isArray(bookings) || bookings.length === 0) {
       setFilteredBookings([]);
       setTotalPages(1);
       return;
@@ -151,6 +166,11 @@ const BookingList = () => {
 
   // Fetch user names and property details for each booking
   const fetchBookingDetails = async (bookings) => {
+    // Skip if bookings is not an array or empty
+    if (!Array.isArray(bookings) || bookings.length === 0) {
+      return;
+    }
+
     const userNamesObj = {};
     const propertyDetailsObj = {};
 
@@ -239,13 +259,16 @@ const BookingList = () => {
     }
   };
 
-  // Get current page bookings
+  // Get current page bookings - Add safety checks
   const indexOfLastBooking = currentPage * pageSize;
   const indexOfFirstBooking = indexOfLastBooking - pageSize;
-  const currentBookings = filteredBookings.slice(
-    indexOfFirstBooking,
-    indexOfLastBooking
-  );
+  const currentBookings = Array.isArray(filteredBookings)
+    ? filteredBookings.slice(indexOfFirstBooking, indexOfLastBooking)
+    : [];
+
+  // No bookings state - added separately for clarity
+  const hasNoBookings =
+    !loading && Array.isArray(bookings) && bookings.length === 0;
 
   if (loading) {
     return (
@@ -277,9 +300,34 @@ const BookingList = () => {
     );
   }
 
+  // Enhanced empty state for no bookings
+  if (hasNoBookings) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FiCalendar className="text-[#20319D] text-2xl" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            No Bookings Yet
+          </h2>
+          <p className="text-gray-600 max-w-md mx-auto mb-6">
+            You don't have any bookings for your properties yet. When tenants
+            make booking requests, they will appear here.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors shadow-sm flex items-center mx-auto"
+          >
+            <FiRefreshCw className="mr-2" /> Refresh Bookings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      {/* Rest of your component stays the same */}
       {/* Header */}
       <div className="mb-6 bg-[#20319D] text-white p-6 rounded-lg shadow-md">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center">
@@ -372,7 +420,6 @@ const BookingList = () => {
       </div>
 
       {/* Active filters display */}
-      {/* ...rest of your component code remains the same... */}
       {(searchTerm || statusFilter !== "All") && (
         <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
           <div className="flex flex-wrap gap-2 items-center">
@@ -415,6 +462,16 @@ const BookingList = () => {
                 ? "Try adjusting your filters to see more results."
                 : "When you receive booking requests, they will appear here."}
             </p>
+
+            {/* Added refresh button for better UX */}
+            {!searchTerm && statusFilter === "All" && (
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-4 px-4 py-2 bg-[#20319D] text-white rounded-md hover:bg-blue-800 transition-colors shadow-sm inline-flex items-center"
+              >
+                <FiRefreshCw className="mr-2" /> Refresh Bookings
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -533,66 +590,79 @@ const BookingList = () => {
 
       {/* Mobile view for small screens */}
       <div className="sm:hidden mt-6">
-        {/* ...mobile view code remains the same... */}
-        <div className="grid grid-cols-1 gap-4">
-          {currentBookings.map((booking, index) => {
-            const { className, icon } = getStatusBadge(booking.status);
+        {filteredBookings.length === 0 ? (
+          <div className="bg-white rounded-lg p-6 text-center shadow-sm">
+            <FiInfo className="mx-auto text-gray-400 text-4xl mb-3" />
+            <h3 className="text-lg font-medium text-gray-600 mb-1">
+              No Bookings Found
+            </h3>
+            <p className="text-gray-500 text-sm">
+              {searchTerm || statusFilter !== "All"
+                ? "Try adjusting your filters."
+                : "When you receive booking requests, they will appear here."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {currentBookings.map((booking, index) => {
+              const { className, icon } = getStatusBadge(booking.status);
 
-            return (
-              <div
-                key={booking.bookingId}
-                className="bg-white rounded-lg shadow-sm p-4 border border-gray-100"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <span className="text-xs font-medium text-[#20319D] bg-blue-50 px-2 py-1 rounded-md">
-                    {indexOfFirstBooking + index + 1}
-                  </span>
-                  <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${className}`}
-                  >
-                    {icon} {booking.status}
-                  </span>
-                </div>
-
-                <div className="mb-3">
-                  <div className="flex items-center mb-2">
-                    <div className="h-8 w-8 rounded-md bg-[#20319D]/10 flex items-center justify-center mr-2">
-                      <FiHome className="text-[#20319D]" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {propertyDetails[booking.propertyId]?.title ||
-                          "Loading..."}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {propertyDetails[booking.propertyId]?.municipality},
-                        {propertyDetails[booking.propertyId]?.city}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-md bg-[#20319D]/10 flex items-center justify-center mr-2">
-                      <FiUser className="text-[#20319D]" />
-                    </div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {userNames[booking.userId] || "Loading..."}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  className="w-full bg-[#20319D] hover:bg-blue-800 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center"
-                  onClick={() =>
-                    console.log(`View booking ${booking.bookingId}`)
-                  }
+              return (
+                <div
+                  key={booking.bookingId}
+                  className="bg-white rounded-lg shadow-sm p-4 border border-gray-100"
                 >
-                  <FiInfo className="mr-1" /> View Details
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-xs font-medium text-[#20319D] bg-blue-50 px-2 py-1 rounded-md">
+                      {indexOfFirstBooking + index + 1}
+                    </span>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${className}`}
+                    >
+                      {icon} {booking.status}
+                    </span>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="flex items-center mb-2">
+                      <div className="h-8 w-8 rounded-md bg-[#20319D]/10 flex items-center justify-center mr-2">
+                        <FiHome className="text-[#20319D]" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {propertyDetails[booking.propertyId]?.title ||
+                            "Loading..."}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {propertyDetails[booking.propertyId]?.municipality},
+                          {propertyDetails[booking.propertyId]?.city}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center">
+                      <div className="h-8 w-8 rounded-md bg-[#20319D]/10 flex items-center justify-center mr-2">
+                        <FiUser className="text-[#20319D]" />
+                      </div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {userNames[booking.userId] || "Loading..."}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    className="w-full bg-[#20319D] hover:bg-blue-800 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center"
+                    onClick={() =>
+                      console.log(`View booking ${booking.bookingId}`)
+                    }
+                  >
+                    <FiInfo className="mr-1" /> View Details
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Mobile pagination */}
         {totalPages > 1 && (
