@@ -1,14 +1,13 @@
 import { getAuth } from "firebase/auth";
-import ApiHandler from "../api/ApiHandler"; // Import ApiHandler
+import ApiHandler from "../api/ApiHandler"; 
 
-// Function to get user data from Firebase
 export const getUserDataFromFirebase = async () => {
   try {
     const auth = getAuth();
     const currentUser = auth.currentUser;
 
     if (currentUser) {
-      const firebaseUserId = currentUser.uid; // Get the Firebase user ID
+      const firebaseUserId = currentUser.uid;
       console.log("Firebase User ID:", firebaseUserId);
 
       // Fetch user data from the database using the Firebase user ID

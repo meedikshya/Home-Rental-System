@@ -15,7 +15,6 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
@@ -125,7 +124,7 @@ const findMessagesBetweenUsers = async (
       }
     });
 
-    // Also check chat rooms directly
+    //  check chat rooms directly
     try {
       const chatsRef = collection(FIREBASE_DB, "chats");
       const chatsSnapshot = await getDocs(chatsRef);
@@ -208,7 +207,6 @@ const sendMessage = async (chatId, messageData, senderFirebaseId) => {
     const currentUser = auth.currentUser;
     const userEmail = currentUser ? currentUser.email : "unknown@user.com";
 
-    // Prepare the message data in the correct format
     let finalMessageData = {};
 
     if (typeof messageData === "string") {
@@ -219,7 +217,6 @@ const sendMessage = async (chatId, messageData, senderFirebaseId) => {
         timestamp: serverTimestamp(),
       };
     } else if (typeof messageData === "object") {
-      // Object message with proper formatting
       finalMessageData = {
         text:
           typeof messageData.text === "object"
@@ -252,7 +249,6 @@ const getAssociatedUsers = async (currentUserId) => {
       const chatsRef = collection(FIREBASE_DB, "chats");
       const chatsSnapshot = await getDocs(chatsRef);
 
-      // Process each chat room to find messages
       for (const chatDoc of chatsSnapshot.docs) {
         const chatId = chatDoc.id;
         // Only check chats that might involve the current user
@@ -267,7 +263,6 @@ const getAssociatedUsers = async (currentUserId) => {
         const messagesSnapshot = await getDocs(
           query(messagesRef, orderBy("timestamp", "desc"))
         );
-
         // Find messages where current user is receiver
         for (const messageDoc of messagesSnapshot.docs) {
           const data = messageDoc.data();
@@ -302,7 +297,6 @@ const getAssociatedUsers = async (currentUserId) => {
         where("senderId", "!=", currentUserId)
       );
       const sentSnapshot = await getDocs(sentQuery);
-
       // Check messages for receivers
       sentSnapshot.docs.forEach((doc) => {
         const data = doc.data();
@@ -317,52 +311,11 @@ const getAssociatedUsers = async (currentUserId) => {
           }
         }
       });
-    } catch (err) {
-      // Continue with partners already found
-    }
-
+    } catch (err) {}
     return [...chatPartners];
   } catch (error) {
     console.error("Error fetching associated users:", error);
     return [];
-  }
-};
-
-const sendMessageWithNotification = async (
-  chatId,
-  messageData,
-  senderFirebaseId,
-  receiverId
-) => {
-  try {
-    // First send the message
-    const messageId = await sendMessage(chatId, messageData, senderFirebaseId);
-
-    // If message sent successfully and we have the receiverId, create notification
-    if (messageId && receiverId) {
-      // Get message text in a consistent way
-      const messageText =
-        typeof messageData === "string"
-          ? messageData
-          : messageData.text || "New message";
-
-      // Import directly here to avoid circular dependencies
-      const { createChatNotification } = require("./Firebase-notification.js");
-
-      await createChatNotification(
-        receiverId,
-        senderFirebaseId,
-        messageText.length > 50
-          ? messageText.substring(0, 47) + "..."
-          : messageText,
-        chatId
-      );
-    }
-
-    return messageId;
-  } catch (error) {
-    console.error("Error in sendMessageWithNotification:", error);
-    throw error;
   }
 };
 
@@ -375,5 +328,4 @@ export {
   messaging,
   getAssociatedUsers,
   findMessagesBetweenUsers,
-  sendMessageWithNotification,
 };

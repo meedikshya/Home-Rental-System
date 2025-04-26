@@ -20,7 +20,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getMessaging, isSupported } from "firebase/messaging";
 
-// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyBfEdQ6VymOIcCOyeEuppeGyWfYt4_PKKo",
   authDomain: "library-management-68286.firebaseapp.com",
@@ -45,7 +44,7 @@ const FIREBASE_AUTH =
 // Initialize Firestore
 const FIREBASE_DB = getFirestore(FIREBASE_APP);
 
-// Initialize Messaging (add this after your FIREBASE_DB initialization)
+// Initialize Messaging
 let messaging = null;
 isSupported().then((isSupported) => {
   if (isSupported) {

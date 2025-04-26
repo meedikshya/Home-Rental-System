@@ -49,7 +49,6 @@ const NotificationPage = ({
 
   const [showContent, setShowContent] = useState(false);
 
-  // Cache key based on user ID
   const cacheKey = useMemo(
     () => `notifications_${userId || "guest"}`,
     [userId]
@@ -281,7 +280,6 @@ const NotificationPage = ({
             ...data,
             createdAt: data.createdAt?.toDate?.() || new Date(),
           };
-
           // Check if sender ID is present, fetch username
           if (notification.senderId) {
             fetchSenderUsername(notification.senderId);
@@ -289,7 +287,6 @@ const NotificationPage = ({
 
           allNotifications.push(notification);
         });
-
         // Sort all notifications
         allNotifications.sort(
           (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
@@ -538,14 +535,6 @@ const NotificationPage = ({
           textColor: "text-sky-500",
           lightBg: "bg-sky-50",
           text: "System",
-        };
-      case "package_delivery":
-        return {
-          icon: <FiPackage size={14} />,
-          color: "bg-rose-500",
-          textColor: "text-rose-500",
-          lightBg: "bg-rose-50",
-          text: "Delivery",
         };
       default:
         return {

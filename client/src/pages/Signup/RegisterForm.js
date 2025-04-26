@@ -5,6 +5,7 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { FIREBASE_AUTH, FIREBASE_DB } from "../../services/Firebase-config.js";
 import ApiHandler from "../../api/ApiHandler.js";
+import bcrypt from "bcryptjs";
 
 export const RegisterForm = () => {
   const navigate = useNavigate();
@@ -90,6 +91,12 @@ export const RegisterForm = () => {
     setSubmitting(true);
 
     try {
+      // Step 1: Hash the password before sending to backend
+      // Use 10 rounds for salt generation (standard secure practice)
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(registerPassword, salt);
+
+      //  Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(
         FIREBASE_AUTH,
         registerEmail,
@@ -109,7 +116,7 @@ export const RegisterForm = () => {
 
       const response = await ApiHandler.post("/Users", {
         email: registerEmail,
-        passwordHash: registerPassword,
+        passwordHash: hashedPassword, // Send properly hashed password
         userRole: "Landlord",
         firebaseUId: firebaseUserId,
       });
@@ -117,6 +124,7 @@ export const RegisterForm = () => {
       console.log("Backend API response:", response);
 
       if (response && response.userId) {
+        sessionStorage.setItem("justRegistered", "true");
         toast.success("Registration successful! Please complete your profile.");
         navigate(`/userinfo/${response.userId}`);
         setRegisterEmail("");

@@ -55,6 +55,7 @@ const Agreement = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const handleDownloadAgreement = async () => {
     const agreementData = {
@@ -68,6 +69,88 @@ const Agreement = () => {
     };
 
     await downloadAgreement(agreementData, setIsDownloading);
+  };
+
+  // Handle cancel booking
+  const handleCancelBooking = () => {
+    Alert.alert(
+      "Cancel Booking",
+      "Are you sure you want to cancel this booking? This action cannot be undone.",
+      [
+        {
+          text: "No, Keep Booking",
+          style: "cancel",
+        },
+        {
+          text: "Yes, Cancel Booking",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsCancelling(true);
+
+              // Delete agreement first if it exists (since it references the booking)
+              if (agreementExists && agreementId) {
+                try {
+                  await ApiHandler.delete(`/Agreements/${agreementId}`);
+                  console.log("Agreement deleted successfully");
+                } catch (error) {
+                  console.error("Error deleting agreement:", error);
+                  // Continue anyway to try deleting the booking
+                }
+              }
+
+              // Then delete the booking
+              try {
+                await ApiHandler.delete(`/Bookings/${bookingId}`);
+                console.log("Booking deleted successfully");
+              } catch (error) {
+                console.error("Error deleting booking:", error);
+                throw error; // Re-throw to trigger the outer catch block
+              }
+
+              // Send notification to landlord about cancellation
+              if (landlordId) {
+                const notificationTitle = "Booking Cancelled";
+                const notificationBody = `A booking for your property at ${address} has been cancelled by the renter.`;
+                const additionalData = {
+                  propertyId,
+                  bookingId,
+                  screen: "LandlordBookings",
+                  action: "booking_cancelled",
+                  timestamp: new Date().toISOString(),
+                };
+
+                await sendNotificationToUser(
+                  landlordId,
+                  notificationTitle,
+                  notificationBody,
+                  additionalData
+                );
+              }
+
+              Alert.alert(
+                "Booking Cancelled",
+                "Your booking has been successfully cancelled.",
+                [
+                  {
+                    text: "OK",
+                    onPress: () => router.back(),
+                  },
+                ]
+              );
+            } catch (error) {
+              console.error("Error cancelling booking:", error);
+              Alert.alert(
+                "Error",
+                "Failed to cancel booking. Please try again."
+              );
+            } finally {
+              setIsCancelling(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Fetch renter name
@@ -263,7 +346,6 @@ const Agreement = () => {
       Alert.alert("Error", "Please select both start and end dates.");
       return;
     }
-
     const agreementData = {
       agreementId: 0,
       bookingId: bookingId,
@@ -274,16 +356,13 @@ const Agreement = () => {
       status: "Pending",
       signedAt: new Date().toISOString(),
     };
-
     try {
       // Create the agreement
       const response = await ApiHandler.post("/Agreements", agreementData);
-
       // Send notification to landlord
       if (landlordId) {
         const notificationTitle = "New Agreement Request";
         const notificationBody = `A renter has initiated a new lease agreement for your property at ${address}.`;
-
         // Additional data to be included with the notification
         const additionalData = {
           propertyId,
@@ -293,7 +372,6 @@ const Agreement = () => {
           action: "view_agreement",
           timestamp: new Date().toISOString(),
         };
-
         // Send the notification
         await sendNotificationToUser(
           landlordId,
@@ -304,7 +382,6 @@ const Agreement = () => {
 
         console.log("Agreement notification sent to landlord:", landlordId);
       }
-
       setIsPending(true);
       Alert.alert(
         "Request Sent",
@@ -558,30 +635,66 @@ const Agreement = () => {
             </TouchableOpacity>
             <View className="mt-6 mb-8 w-full">
               {isPending ? (
-                <TouchableOpacity
-                  className="p-4 rounded-lg w-full bg-gray-400"
-                  disabled={true}
-                >
-                  <Text className="text-white text-lg font-semibold text-center">
-                    Pending Landlord Approval
-                  </Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    className="p-4 rounded-lg w-full bg-gray-400 mb-3"
+                    disabled={true}
+                  >
+                    <Text className="text-white text-lg font-semibold text-center">
+                      Pending Landlord Approval
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Add cancel button for pending agreements */}
+                  <TouchableOpacity
+                    className="p-4 rounded-lg w-full bg-red-500"
+                    onPress={handleCancelBooking}
+                    disabled={isCancelling}
+                  >
+                    {isCancelling ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text className="text-white text-lg font-semibold text-center">
+                        Cancel Booking
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </>
               ) : isApproved ? (
                 isCheckingPayment ? (
                   <View className="p-4 rounded-lg w-full bg-gray-100 items-center">
                     <ActivityIndicator size="small" color="#20319D" />
                   </View>
                 ) : (
-                  <TouchableOpacity
-                    className="p-4 rounded-lg w-full bg-[#20319D]"
-                    onPress={handleProceedPayment}
-                  >
-                    <Text className="text-white text-lg font-semibold text-center">
-                      {isPaymentCompleted
-                        ? "View Payment Details"
-                        : "Proceed to Payment"}
-                    </Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      className="p-4 rounded-lg w-full bg-[#20319D] mb-3"
+                      onPress={handleProceedPayment}
+                    >
+                      <Text className="text-white text-lg font-semibold text-center">
+                        {isPaymentCompleted
+                          ? "View Payment Details"
+                          : "Proceed to Payment"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Only show cancel button if payment is not completed */}
+                    {!isPaymentCompleted && (
+                      <TouchableOpacity
+                        className="p-4 rounded-lg w-full bg-red-500"
+                        onPress={handleCancelBooking}
+                        disabled={isCancelling}
+                      >
+                        {isCancelling ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <Text className="text-white text-lg font-semibold text-center">
+                            Cancel Booking
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )
               ) : (
                 <TouchableOpacity

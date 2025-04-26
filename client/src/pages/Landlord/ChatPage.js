@@ -118,8 +118,6 @@ const ChatPage = () => {
   // Generate chat ID for sending messages
   const generatedChatId =
     currentUserId && renterId ? `chat_${currentUserId}_${renterId}` : null;
-
-  // Fetch messages once we have both user IDs
   useEffect(() => {
     if (!currentUserFirebaseId || !renterFirebaseId) return;
 
@@ -131,7 +129,7 @@ const ChatPage = () => {
           setMessages(fetchedMessages);
         }
         setLoading(false);
-        setInitialScrollDone(false); // Reset scroll flag when new messages arrive
+        setInitialScrollDone(false);
       })
       .catch((err) => {
         console.error("Error in direct message fetching:", err);
@@ -224,11 +222,8 @@ const ChatPage = () => {
       setError("Cannot send message: Missing required IDs");
       return;
     }
-
     setSending(true);
-
     try {
-      // Add a temporary message to UI for better UX
       const tempId = `temp_${Date.now()}`;
       const tempMessage = {
         id: tempId,
@@ -238,14 +233,10 @@ const ChatPage = () => {
         timestamp: { seconds: Math.floor(Date.now() / 1000) },
         isPending: true,
       };
-
       setMessages((prev) => [...prev, tempMessage]);
-
-      // Scroll after adding a new message (use auto instead of smooth to prevent jitter)
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
       }, 10);
-
       // Create message data object
       const messageData = {
         text: messageText,
@@ -254,17 +245,14 @@ const ChatPage = () => {
         receiverId: renterFirebaseId,
         timestamp: new Date(),
       };
-
       // Send the message
       await sendMessage(generatedChatId, messageData, currentUserFirebaseId);
-
       // Update UI to show message sent
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === tempId ? { ...msg, isPending: false } : msg
         )
       );
-
       // Send notification to receiver
       try {
         const receiverId = renterFirebaseId;
@@ -273,7 +261,6 @@ const ChatPage = () => {
         const notificationBody = `You have a new message from ${
           getAuth().currentUser?.email || "a user"
         }`;
-
         // Additional data
         const additionalData = {
           chatId: generatedChatId,

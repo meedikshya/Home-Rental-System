@@ -16,7 +16,6 @@ import ApiHandler from "../../api/ApiHandler";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Function to decode JWT token and extract role
 const getUserRoleFromToken = (token) => {
   if (!token) return null;
 
@@ -24,7 +23,6 @@ const getUserRoleFromToken = (token) => {
     const payload = token.split(".")[1];
     const decoded = JSON.parse(atob(payload));
 
-    // Check for role claim in the token
     return (
       decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] ||
       null
@@ -67,7 +65,6 @@ const SignIn = () => {
       const firebaseToken = await userCredential.user.getIdToken(true);
       console.log("Firebase Token:", firebaseToken);
 
-      // Send email to backend for JWT
       const response = await ApiHandler.post("/auth/login", {
         Email: form.email,
         firebaseUId: userCredential.user.uid,
@@ -83,35 +80,23 @@ const SignIn = () => {
 
       // Check if user is a Renter
       if (userRole !== "Renter") {
-        // Sign out from Firebase since this app is for Renters only
         await FIREBASE_AUTH.signOut();
-
-        // Show error message
         Alert.alert(
           "Access Denied",
           "This app is for Renters only. Please use the appropriate application for your role."
         );
-
-        // Don't store token for non-Renters
         ApiHandler.setAuthToken(null);
         setSubmitting(false);
         return;
       }
-
       // Store JWT token in AsyncStorage
       await AsyncStorage.setItem("jwtToken", jwtToken);
-
-      // Save user data including role
       const userData = {
         email: form.email,
         role: userRole,
       };
       await AsyncStorage.setItem("user", JSON.stringify(userData));
-
-      // Set token for future API calls using ApiHandler
       ApiHandler.setAuthToken(jwtToken);
-
-      // Show success alert
       Alert.alert("Success", "Signed in successfully as Renter");
 
       // Navigate to home page (or tabs)

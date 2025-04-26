@@ -18,16 +18,12 @@ import {
   FiUser,
   FiSearch,
   FiCalendar,
-  FiInfo,
-  FiRefreshCw,
   FiMessageCircle,
   FiX,
 } from "react-icons/fi";
 
-// Create a cache for user details to avoid repeated API calls
 const userCache = {};
 const messageCache = {};
-// Add a new ID mapping cache to avoid repeated ID resolution calls
 const idMappingCache = {};
 
 const ChatList = () => {
@@ -41,7 +37,6 @@ const ChatList = () => {
   const [error, setError] = useState(null);
   const abortControllerRef = useRef(null);
 
-  // Check if user is authenticated immediately
   useEffect(() => {
     const auth = getAuth();
     const currentUser = auth.currentUser;
@@ -56,7 +51,6 @@ const ChatList = () => {
     }
   }, []);
 
-  // Cancel previous requests when component unmounts
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -64,10 +58,7 @@ const ChatList = () => {
       }
     };
   }, []);
-
-  // Improved resolveUserId function with numeric ID fallback (key fix)
   const resolveUserId = async (firebaseId) => {
-    // Check cache first
     if (idMappingCache[firebaseId]) {
       console.log(
         `Using cached user ID ${idMappingCache[firebaseId]} for Firebase ID ${firebaseId}`
@@ -76,15 +67,12 @@ const ChatList = () => {
     }
 
     try {
-      // IMPORTANT CHANGE: If the firebaseId looks like a numeric ID, just use it directly
-      // This is crucial for your system where sometimes the ID is already numeric
       if (!isNaN(firebaseId) && firebaseId.length < 10) {
         console.log(`Using numeric ID ${firebaseId} directly`);
         idMappingCache[firebaseId] = firebaseId;
         return firebaseId;
       }
 
-      // Try to get user ID from Firebase ID
       console.log(
         `Attempting to resolve user ID for Firebase ID: ${firebaseId}`
       );
@@ -98,7 +86,6 @@ const ChatList = () => {
         return userId;
       }
 
-      // Try alternate endpoint if available
       try {
         const response = await ApiHandler.get(
           `/Users/by-firebase/${firebaseId}`
@@ -117,7 +104,6 @@ const ChatList = () => {
     } catch (error) {
       console.error(`Error resolving user ID for ${firebaseId}:`, error);
 
-      // Final fallback: If firebaseId is numeric, use it as the userId
       if (!isNaN(firebaseId)) {
         console.log(
           `Fallback: Using numeric firebaseId ${firebaseId} as userId`
@@ -130,24 +116,17 @@ const ChatList = () => {
     }
   };
 
-  // Initial load - fetch landlord name and first few chat users
+  //fetch landlord name and first few chat users
   useEffect(() => {
     if (!currentUserId) return;
-
-    // Create a new abort controller for this request session
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
-
     const quickLoad = async () => {
       try {
         console.log("Starting quick load for user:", currentUserId);
-
-        // Start fetching landlord name in parallel
         fetchLandlordName(currentUserId).catch((err) =>
           console.error("Error fetching landlord name:", err)
         );
-
-        // Get associated users with better error handling
         let associatedIds = [];
         try {
           associatedIds = await getAssociatedUsers(currentUserId);
@@ -159,13 +138,10 @@ const ChatList = () => {
           setInitialLoad(false);
           return;
         }
-
-        // Filter out any invalid IDs
         const validAssociatedIds = (associatedIds || []).filter(
           (id) => id && typeof id === "string" && id.length > 0
         );
         console.log(`${validAssociatedIds.length} valid associated IDs found`);
-
         if (validAssociatedIds.length === 0) {
           console.log("No valid associated users found");
           setChatUsers([]);
@@ -173,42 +149,31 @@ const ChatList = () => {
           setInitialLoad(false);
           return;
         }
-
-        // Load users in batches like in the mobile app
         const batchSize = 3;
         let loadedUsers = [];
-
-        // Load first batch immediately
         const firstBatch = validAssociatedIds.slice(0, batchSize);
         console.log(`Loading first batch of ${firstBatch.length} users`);
-
         const firstBatchPromises = firstBatch.map((id) =>
           loadSingleUser(currentUserId, id, signal).catch((err) => {
             console.error(`Error loading user ${id}:`, err);
             return null;
           })
         );
-
         const firstBatchResults = await Promise.all(firstBatchPromises);
         const validFirstBatch = firstBatchResults.filter(Boolean);
-
         console.log(
           `First batch returned ${validFirstBatch.length} valid users`
         );
         loadedUsers = [...validFirstBatch];
-
         if (loadedUsers.length > 0) {
           setChatUsers(loadedUsers);
           setInitialLoad(false);
         }
-
-        // Load remaining batches in the background
         if (validAssociatedIds.length > batchSize) {
           const remainingIds = validAssociatedIds.slice(batchSize);
           console.log(
             `Loading remaining ${remainingIds.length} users in background`
           );
-
           setTimeout(() => {
             loadRemainingUsersInBatches(
               currentUserId,
@@ -235,7 +200,7 @@ const ChatList = () => {
     quickLoad();
   }, [currentUserId]);
 
-  // Load remaining users in batches - improved version
+  // Load remaining users in batches
   const loadRemainingUsersInBatches = async (
     currentId,
     remainingIds,
@@ -251,14 +216,12 @@ const ChatList = () => {
           console.log("Loading aborted");
           return;
         }
-
         const batch = remainingIds.slice(i, i + batchSize);
         console.log(
           `Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(
             remainingIds.length / batchSize
           )}`
         );
-
         // Load this batch with better error handling
         const batchPromises = batch.map((id) =>
           loadSingleUser(currentId, id, signal).catch((err) => {
@@ -266,13 +229,10 @@ const ChatList = () => {
             return null;
           })
         );
-
         // Wait for all promises to resolve, even if some fail
         const batchResults = await Promise.all(batchPromises);
         const validResults = batchResults.filter(Boolean);
-
         console.log(`Batch returned ${validResults.length} valid users`);
-
         if (validResults.length > 0) {
           // Add new users to our collection
           for (const user of validResults) {
@@ -280,21 +240,17 @@ const ChatList = () => {
               allUsers.push(user);
             }
           }
-
           // Sort by timestamp and update state
           allUsers.sort((a, b) => {
             if (!a.timestamp) return 1;
             if (!b.timestamp) return -1;
             return b.timestamp.seconds - a.timestamp.seconds;
           });
-
           setChatUsers([...allUsers]);
         }
-
         // Small delay to prevent UI freezing
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
       console.log("Finished loading all users");
     } catch (error) {
       console.error("Error loading remaining users:", error);
@@ -693,7 +649,6 @@ const ChatList = () => {
           </div>
         ) : (
           <div>
-            {/* Show incremental loading indicator if there are users but still loading more */}
             {loading && chatUsers.length > 0 && (
               <div className="p-2 bg-blue-50 text-center text-sm text-blue-800">
                 <div className="flex items-center justify-center">

@@ -147,35 +147,29 @@ const PaymentSuccess = ({
               Your payment has been successfully processed
             </Text>
           </View>
-
           {/* Divider */}
           <View style={styles.divider} />
-
           {/* Payment Details */}
           <View style={styles.detailsSection}>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Amount Paid</Text>
               <Text style={styles.detailValue}>Rs. {amount || ""}</Text>
             </View>
-
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Payment Date</Text>
               <Text style={styles.detailValue}>
                 {formatDate(new Date().toISOString())}
               </Text>
             </View>
-
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Payment Method</Text>
               <Text style={styles.detailValue}>eSewa</Text>
             </View>
-
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Status</Text>
               <Text style={styles.statusValue}>Completed</Text>
             </View>
           </View>
-
           {/* Agreement Details */}
           {address && (
             <View style={styles.propertyDetailsCard}>
@@ -185,7 +179,6 @@ const PaymentSuccess = ({
               </View>
             </View>
           )}
-
           {/* Return Button */}
           <TouchableOpacity
             style={styles.returnButton}

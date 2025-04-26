@@ -30,6 +30,43 @@ const PropertyCard = ({
 }) => {
   const propertyId = property.propertyId;
 
+  // Improved image navigation handlers with proper event handling
+  const handleImageNavigation = (direction, e) => {
+    // Prevent event bubbling and default behavior
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (direction === "prev") {
+      goToPrevImage(propertyId, e);
+    } else {
+      goToNextImage(propertyId, e);
+    }
+  };
+
+  // Handler for opening the image slider modal
+  const handleOpenFullSlider = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    handleOpenImageSlider(propertyId);
+  };
+
+  // Handler for dot navigation
+  const handleDotClick = (index, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    setCurrentImageIndices((prev) => ({
+      ...prev,
+      [propertyId]: index,
+    }));
+
+    // Update displayed image
+    setObjectUrls((prev) => ({
+      ...prev,
+      [propertyId]: processImageUrl(images[index].imageUrl),
+    }));
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-100 transform ">
       {/* Property image section with slider controls */}
@@ -45,19 +82,21 @@ const PropertyCard = ({
             {/* Image slider navigation arrows - only show if multiple images */}
             {hasMultipleImages && (
               <>
-                {/* Left arrow */}
+                {/* Left arrow - FIXED with proper event handling */}
                 <button
-                  onClick={(e) => goToPrevImage(propertyId, e)}
-                  className="absolute top-1/2 left-2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition opacity-0 group-hover:opacity-100"
+                  onClick={(e) => handleImageNavigation("prev", e)}
+                  type="button"
+                  className="absolute top-1/2 left-2 transform -translate-y-1/2 bg-black bg-opacity-60 hover:bg-opacity-80 text-white p-2 rounded-full transition md:opacity-0 group-hover:opacity-100 z-10"
                   aria-label="Previous image"
                 >
                   <FaChevronLeft size={16} />
                 </button>
 
-                {/* Right arrow */}
+                {/* Right arrow - FIXED with proper event handling */}
                 <button
-                  onClick={(e) => goToNextImage(propertyId, e)}
-                  className="absolute top-1/2 right-2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition opacity-0 group-hover:opacity-100"
+                  onClick={(e) => handleImageNavigation("next", e)}
+                  type="button"
+                  className="absolute top-1/2 right-2 transform -translate-y-1/2 bg-black bg-opacity-60 hover:bg-opacity-80 text-white p-2 rounded-full transition md:opacity-0 group-hover:opacity-100 z-10"
                   aria-label="Next image"
                 >
                   <FaChevronRight size={16} />
@@ -65,27 +104,14 @@ const PropertyCard = ({
               </>
             )}
 
-            {/* Image count indicator */}
+            {/* Image count indicator - IMPROVED VISIBILITY */}
             {hasMultipleImages && (
               <div className="absolute bottom-2 left-0 right-0 flex justify-center space-x-2">
                 {images.map((_, index) => (
                   <button
                     key={index}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-
-                      setCurrentImageIndices((prev) => ({
-                        ...prev,
-                        [propertyId]: index,
-                      }));
-
-                      // Update displayed image
-                      setObjectUrls((prev) => ({
-                        ...prev,
-                        [propertyId]: processImageUrl(images[index].imageUrl),
-                      }));
-                    }}
+                    onClick={(e) => handleDotClick(index, e)}
+                    type="button"
                     className={`w-2 h-2 rounded-full transition-transform duration-200 ${
                       currentIdx === index
                         ? "bg-white scale-125"
@@ -94,6 +120,13 @@ const PropertyCard = ({
                     aria-label={`Image ${index + 1} of ${images.length}`}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Image counter - ADDED FOR BETTER UX */}
+            {hasMultipleImages && (
+              <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-md font-medium">
+                {currentIdx + 1} / {images.length}
               </div>
             )}
 
@@ -109,14 +142,16 @@ const PropertyCard = ({
           </div>
         )}
 
-        {/* View all images overlay button */}
+        {/* View all images overlay button - FIXED with proper event handling */}
         {hasMultipleImages && (
-          <div
-            onClick={() => handleOpenImageSlider(propertyId)}
-            className="absolute top-2 right-2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full cursor-pointer transition opacity-0 group-hover:opacity-100"
+          <button
+            onClick={handleOpenFullSlider}
+            type="button"
+            className="absolute top-2 right-2 bg-black bg-opacity-60 hover:bg-opacity-80 text-white p-2 rounded-full cursor-pointer transition md:opacity-0 group-hover:opacity-100"
+            aria-label="View all images"
           >
             <FaImages size={14} />
-          </div>
+          </button>
         )}
 
         {/* Status badge */}
@@ -153,7 +188,7 @@ const PropertyCard = ({
               {property.municipality}, {property.city}
             </span>
           </div>
-          {/* Property Type Badge - New placement */}
+          {/* Property Type Badge */}
           <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-800 rounded-full">
             <FaHome className="mr-1" /> {property.roomType}
           </span>
@@ -182,7 +217,6 @@ const PropertyCard = ({
             </span>
           </div>
 
-          {/* Changed from property type to kitchens */}
           <div className="flex flex-col items-center bg-gray-50 rounded-lg p-2 hover:bg-gray-100 transition-colors">
             <div className="flex items-center justify-center mb-1">
               <FaUtensils className="text-[#20319D]" />
@@ -198,6 +232,7 @@ const PropertyCard = ({
           <button
             className="flex items-center justify-center px-4 py-2 text-[#20319D] bg-[#20319D]/10 hover:bg-[#20319D]/20 rounded-lg transition-colors"
             onClick={() => handleEditProperty(propertyId)}
+            type="button"
           >
             <FaEdit className="mr-2" />
             <span>Edit</span>
@@ -205,6 +240,7 @@ const PropertyCard = ({
           <button
             className="flex items-center justify-center px-4 py-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
             onClick={() => handleDeleteProperty(propertyId)}
+            type="button"
           >
             <FaTrash className="mr-2" />
             <span>Delete</span>

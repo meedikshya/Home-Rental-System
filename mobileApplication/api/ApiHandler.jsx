@@ -1,10 +1,9 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { REACT_APP_BASE_URL } from "@env";
 
 // const BASE_URL = REACT_APP_BASE_URL;
 class ApiHandler {
-  constructor(baseURL = "http://100.64.246.118:8000/api") {
+  constructor(baseURL = "http://192.168.1.70:8000/api") {
     this.api = axios.create({
       baseURL,
       headers: {
@@ -30,7 +29,7 @@ class ApiHandler {
   async loadToken() {
     try {
       const token = await AsyncStorage.getItem("jwtToken");
-      if (token) this.setAuthToken(token); // Set token to headers if available
+      if (token) this.setAuthToken(token);
     } catch (error) {
       console.error("Failed to load token:", error);
     }
@@ -38,14 +37,14 @@ class ApiHandler {
 
   // Save token to AsyncStorage and update headers
   async saveToken(token) {
-    await AsyncStorage.setItem("jwtToken", token); // Save the token in AsyncStorage
-    this.setAuthToken(token); // Update the header with the token
+    await AsyncStorage.setItem("jwtToken", token);
+    this.setAuthToken(token);
   }
 
   // Remove token from AsyncStorage and headers
   async removeToken() {
     await AsyncStorage.removeItem("jwtToken");
-    this.setAuthToken(null); // Clear token from headers
+    this.setAuthToken(null);
   }
 
   // GET request
@@ -97,7 +96,7 @@ class ApiHandler {
     } else {
       console.error("Error:", error.message);
     }
-    throw error; // Re-throw the error to be handled elsewhere
+    throw error;
   }
 }
 

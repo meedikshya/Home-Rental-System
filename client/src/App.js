@@ -37,50 +37,38 @@ import AdminPanel from "./pages/Admin/AdminPanel.js";
 import UserProfileDetails from "./components/admin/UserProfileDetails.js";
 
 // Auth and utilities
-import SessionTimeoutProvider from "./hooks/sessionProvider.js";
 import RoleProtectedRoute from "./components/ProtectedRoutes/RoleProtectedRoutes.js";
-import { FIREBASE_AUTH } from "./services/Firebase-config.js";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import AgreementLandlord from "./pages/Landlord/AgreementLandlord.js";
 
 function App() {
-  // Initialize notifications - similar to your mobile app
   useEffect(() => {
     // Request notification permission and initialize
     const initNotifications = async () => {
       try {
-        // Initialize notifications system
         await initializeNotifications();
 
-        // Set up listeners for notifications
         const unsubscribe = setupNotificationListeners();
 
-        // Return cleanup function
         return unsubscribe;
       } catch (error) {
         console.error("Error initializing notifications:", error);
         return () => {};
       }
     };
-
-    // Start initialization and store the cleanup function
     const notificationCleanup = initNotifications();
-
-    // Clean up on unmount - handles both synchronous and Promise returns
     return () => {
       if (
         notificationCleanup &&
         typeof notificationCleanup.then === "function"
       ) {
-        // If it's a Promise, wait for it to resolve then call the function
         notificationCleanup.then((cleanup) => {
           if (typeof cleanup === "function") {
             cleanup();
           }
         });
       } else if (typeof notificationCleanup === "function") {
-        // If it's already a function, call it directly
         notificationCleanup();
       }
     };
@@ -141,8 +129,7 @@ function App() {
                     />
                     <Route
                       path="notifications"
-                      element={<NotificationPage
-                       />}
+                      element={<NotificationPage />}
                     />
                     <Route
                       path="upload-images/:propertyId"

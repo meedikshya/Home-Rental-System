@@ -682,7 +682,7 @@ const PropertyList = ({ onAddProperty, refreshTrigger }) => {
             const currentIdx = currentImageIndices[propertyId] || 0;
             const imageUrl =
               hasMultipleImages && images[currentIdx]?.imageUrl
-                ? images[currentIdx].imageUrl
+                ? processImageUrl(images[currentIdx].imageUrl)
                 : objectUrls[propertyId];
 
             return (

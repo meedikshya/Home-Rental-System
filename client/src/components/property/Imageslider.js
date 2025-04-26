@@ -182,7 +182,7 @@ const ImageSlider = ({
       {isFullscreen && (
         <button
           onClick={() => setIsFullscreen(false)}
-          className="absolute top-4 right-4 z-[101] bg-black bg-opacity-60 text-white p-2 rounded-full hover:bg-opacity-100 transition-colors"
+          className="absolute top-4 right-4 z-[101] bg-black bg-opacity-60 text-white p-2 rounded-full hover:bg-opacity-100 "
         >
           <FaTimes size={20} />
         </button>
@@ -221,7 +221,7 @@ const ImageSlider = ({
           </div>
 
           {/* Image counter */}
-          <div className="absolute bottom-4 left-4 bg-black bg-opacity-60 text-white text-sm px-2 py-1 rounded">
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-90 text-white text-sm font-medium px-3 py-1.5 rounded-md shadow">
             {currentIndex + 1} / {images.length}
           </div>
 
@@ -230,14 +230,16 @@ const ImageSlider = ({
             <>
               <button
                 onClick={goToPrevious}
-                className="absolute top-1/2 -translate-y-1/2 left-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:bg-opacity-100 transition-colors focus:outline-none"
+                type="button"
+                className="absolute top-1/2  left-2 bg-black bg-opacity-75 hover:bg-opacity-100 text-white p-3 rounded-full transition-colors focus:outline-none z-10"
                 aria-label="Previous image"
               >
                 <FaArrowLeft size={20} />
               </button>
               <button
                 onClick={goToNext}
-                className="absolute top-1/2 -translate-y-1/2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:bg-opacity-100 transition-colors focus:outline-none"
+                type="button"
+                className="absolute top-1/2 right-2 bg-black bg-opacity-75 hover:bg-opacity-100 text-white p-3 rounded-full transition-colors focus:outline-none z-10"
                 aria-label="Next image"
               >
                 <FaArrowRight size={20} />
@@ -269,7 +271,7 @@ const ImageSlider = ({
             <div
               key={`thumb-${index}`}
               onClick={() => goToSlide(index)}
-              className={`relative flex-shrink-0 cursor-pointer transition-all ${
+              className={`relative flex-shrink-0 cursor-pointer  ${
                 currentIndex === index
                   ? "border-2 border-blue-500 rounded-md"
                   : "opacity-70 hover:opacity-100"

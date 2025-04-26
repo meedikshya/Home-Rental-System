@@ -7,7 +7,7 @@ import ApiHandler from "../../api/ApiHandler.js";
 import { useAuth } from "../../context/AuthContext.js";
 
 const isTokenExpired = (token) => {
-  if (!token) return false; // No token doesn't mean expired - it could be first visit
+  if (!token) return false;
 
   try {
     const payload = token.split(".")[1];
@@ -16,12 +16,10 @@ const isTokenExpired = (token) => {
     // Check if token has expiration claim
     if (!decoded.exp) return false;
 
-    // Compare expiration timestamp with current time
     const currentTime = Math.floor(Date.now() / 1000);
     return decoded.exp < currentTime;
   } catch (error) {
     console.error("Error checking token expiration:", error);
-    // Don't consider parsing errors as expired sessions
     return false;
   }
 };
@@ -56,66 +54,48 @@ export const LoginForm = () => {
   const [loginAttempt, setLoginAttempt] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
 
-  // Add a ref to track if logout has already been performed
   const logoutPerformedRef = useRef(false);
-  // Add a ref to track initial mount
   const initialMountRef = useRef(true);
-  // Add a ref to track if this is an explicit navigation
   const isExplicitNavigationRef = useRef(false);
-  // Add timestamp for server restart detection
   const pageLoadTime = useRef(Date.now());
-  // Track server restart state
   const [isServerRestart, setIsServerRestart] = useState(false);
 
-  // Check for expired session on component mount - but only if explicitly redirected
   useEffect(() => {
-    // Only check for session expiration if redirected from another page
-    // or if there's a specific expired query parameter
     const params = new URLSearchParams(location.search);
     const expiredParam = params.get("sessionExpired");
     const redirectedFrom = params.get("from");
 
-    // Clear the URL parameters without triggering a full page reload
     if (expiredParam || redirectedFrom) {
       const newUrl = window.location.pathname;
       window.history.replaceState({}, document.title, newUrl);
     }
 
-    // Only show expired message if explicitly redirected with expired parameter
-    // or we're coming from another page with an expired token
     if (expiredParam === "true") {
       setSessionExpired(true);
-      // Don't set error message - only show toast
       toast.info("Your session has expired. Please sign in again.", {
         position: "top-right",
         autoClose: 5000,
       });
 
-      // Clean up any stale auth data
       localStorage.removeItem("jwtToken");
       localStorage.removeItem("user");
       ApiHandler.removeToken();
 
-      // Sign out from Firebase if needed
       if (currentUser && !logoutPerformedRef.current) {
         logoutPerformedRef.current = true;
         signOut(FIREBASE_AUTH).catch((error) => {
           console.error("Error signing out after session expiration:", error);
         });
       }
-    }
-    // Check if token is expired and we were redirected from another page
-    else if (redirectedFrom) {
+    } else if (redirectedFrom) {
       const token = localStorage.getItem("jwtToken");
       if (isTokenExpired(token)) {
         setSessionExpired(true);
-        // Don't set error message - only show toast
         toast.info("Your session has expired. Please sign in again.", {
           position: "top-right",
           autoClose: 5000,
         });
 
-        // Clean up any stale auth data
         localStorage.removeItem("jwtToken");
         localStorage.removeItem("user");
         ApiHandler.removeToken();
@@ -130,44 +110,34 @@ export const LoginForm = () => {
     }
   }, [location.search, currentUser]);
 
-  // Check for navigation to login via history
   useEffect(() => {
-    // If location changes with a new key, it's an explicit navigation
     if (!initialMountRef.current && location.key) {
       isExplicitNavigationRef.current = true;
     }
   }, [location]);
 
-  // Auto-redirect for logged-in users on server restart
   useEffect(() => {
-    // Run on initial load only
     if (!initialMountRef.current) return;
 
     const checkServerRestart = () => {
       const lastActivity = localStorage.getItem("lastUserActivity");
-      // Consider it a server restart if:
-      // 1. Page just loaded
-      // 2. Last activity exists but was recent (within 5 seconds)
       const now = Date.now();
 
       if (lastActivity) {
         const timeSinceLastActivity = now - parseInt(lastActivity, 10);
-        // If last activity was recent but page refreshed, likely a server restart
         if (timeSinceLastActivity < 5000) {
           setIsServerRestart(true);
-          console.log("Detected server restart");
+          // console.log("Detected server restart");
           return true;
         }
       }
       return false;
     };
 
-    // Update last activity timestamp
     const updateActivityTimestamp = () => {
       localStorage.setItem("lastUserActivity", Date.now().toString());
     };
 
-    // Set up activity tracking
     updateActivityTimestamp();
     window.addEventListener("click", updateActivityTimestamp);
     window.addEventListener("keypress", updateActivityTimestamp);
@@ -175,31 +145,23 @@ export const LoginForm = () => {
     const redirectIfNeeded = async () => {
       initialMountRef.current = false;
 
-      // Skip if still loading auth state
       if (loading) return;
 
-      // Check if this is likely a server restart
       const isRestart = checkServerRestart();
-
-      // If logged in and it's a server restart, redirect to appropriate page
       if (currentUser && isRestart) {
-        logoutPerformedRef.current = true; // Prevent auto-logout
+        logoutPerformedRef.current = true;
 
         try {
-          // Check if token is still valid
           const jwtToken = localStorage.getItem("jwtToken");
-          if (!jwtToken) return; // No token, can't redirect
+          if (!jwtToken) return;
 
-          // Don't redirect if token is expired
           if (isTokenExpired(jwtToken)) {
-            // Silently clean up without showing error message
             localStorage.removeItem("jwtToken");
             localStorage.removeItem("user");
             ApiHandler.removeToken();
             return;
           }
 
-          // Get user role and redirect
           const userRole = getUserRoleFromToken(jwtToken);
 
           if (userRole === "Landlord") {
@@ -211,24 +173,19 @@ export const LoginForm = () => {
           }
         } catch (error) {
           console.error("Error during restart redirect:", error);
-          // Silently handle errors without showing expired session message
         }
       }
     };
 
-    // Execute redirect logic
     redirectIfNeeded();
 
     return () => {
-      // Clean up event listeners
       window.removeEventListener("click", updateActivityTimestamp);
       window.removeEventListener("keypress", updateActivityTimestamp);
     };
   }, [currentUser, loading, navigate]);
 
-  // Auto-logout when navigating to login page while already authenticated
   useEffect(() => {
-    // Skip if loading, in login process, already logged out, or on server restart
     if (
       loading ||
       loginAttempt ||
@@ -238,24 +195,17 @@ export const LoginForm = () => {
       return;
     }
 
-    // Only log out if:
-    // 1. User is logged in
-    // 2. This was an explicit navigation to login page (not initial load)
-    // 3. Not in the middle of submitting login form
     if (currentUser && !isSubmitting && isExplicitNavigationRef.current) {
       console.log(
         "Explicit navigation to login while logged in. Logging out..."
       );
 
-      // Set the ref to true to prevent double execution
       logoutPerformedRef.current = true;
 
-      // Clear tokens and auth data
       localStorage.removeItem("jwtToken");
       localStorage.removeItem("user");
       ApiHandler.removeToken();
 
-      // Sign out from Firebase
       signOut(FIREBASE_AUTH)
         .then(() => {
           console.log("User signed out successfully");
@@ -277,23 +227,20 @@ export const LoginForm = () => {
   const handleSignin = async (e) => {
     if (e) e.preventDefault();
 
-    // Clear error states
     setError("");
     setEmailError("");
     setPasswordError("");
     setSessionExpired(false);
-
-    // Validation
     if (!email.trim() || !password.trim()) {
       if (!email.trim()) {
-        setEmailError("Email is required"); // Just for styling
+        setEmailError("Email is required");
         toast.warning("Please enter your email address.", {
           position: "top-right",
           autoClose: 3000,
         });
       }
       if (!password.trim()) {
-        setPasswordError("Password is required"); // Just for styling
+        setPasswordError("Password is required");
         toast.warning("Please enter your password.", {
           position: "top-right",
           autoClose: 3000,
@@ -304,7 +251,7 @@ export const LoginForm = () => {
 
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(email)) {
-      setEmailError("Invalid email"); // Just for styling
+      setEmailError("Invalid email");
       toast.warning("Invalid email format. Please check your email address.", {
         position: "top-right",
         autoClose: 3000,
@@ -313,7 +260,6 @@ export const LoginForm = () => {
     }
 
     setSubmitting(true);
-    // Set login attempt flag to prevent auto-logout
     setLoginAttempt(true);
 
     try {
@@ -330,21 +276,18 @@ export const LoginForm = () => {
 
       const jwtToken = response.token;
 
-      // Extract user role from JWT
       const userRole = getUserRoleFromToken(jwtToken);
       console.log("User role:", userRole);
 
-      // Define allowed roles for this portal
       const ALLOWED_ROLES = ["Landlord", "Admin"];
 
       if (!ALLOWED_ROLES.includes(userRole)) {
-        // Handle unauthorized role (like Renter)
         await FIREBASE_AUTH.signOut();
 
         toast.error(
           "Access denied. This portal is for Landlords and Admins only.",
           {
-            position: "top-right", // Changed from top-center
+            position: "top-right",
             autoClose: 5000,
             hideProgressBar: false,
             closeOnClick: true,
@@ -352,8 +295,6 @@ export const LoginForm = () => {
             draggable: true,
           }
         );
-
-        // Don't set error message - only show toast
 
         localStorage.removeItem("jwtToken");
         ApiHandler.removeToken();
@@ -363,7 +304,6 @@ export const LoginForm = () => {
         return;
       }
 
-      // Store authentication data
       localStorage.setItem("jwtToken", jwtToken);
       ApiHandler.setAuthToken(jwtToken);
 
@@ -372,9 +312,6 @@ export const LoginForm = () => {
         role: userRole,
       };
       localStorage.setItem("user", JSON.stringify(userData));
-
-      // Update last activity timestamp
-      localStorage.setItem("lastUserActivity", Date.now().toString());
 
       toast.success(
         `Welcome back! Signed in successfully as ${userRole || "User"}`,
@@ -387,14 +324,12 @@ export const LoginForm = () => {
         }
       );
 
-      // Reset the logout performed ref since we're now intentionally logging in
       logoutPerformedRef.current = false;
 
       // Role-based redirection
       if (userRole === "Landlord") {
         navigate("/landlord/property");
       } else if (userRole === "Admin") {
-        // Updated to redirect to the new admin dashboard
         navigate("/admin/dashboard");
       } else {
         navigate("/");
@@ -404,20 +339,19 @@ export const LoginForm = () => {
       let toastMessage = "Login failed. Please try again.";
 
       if (error.code) {
-        // Firebase authentication errors
         switch (error.code) {
           case "auth/wrong-password":
-            setPasswordError("Invalid"); // Just for styling
+            setPasswordError("Invalid");
             toastMessage = "The password you entered is incorrect.";
             break;
 
           case "auth/invalid-credential":
-            setPasswordError("Invalid"); // Just for styling
+            setPasswordError("Invalid");
             toastMessage = "The email or password you entered is incorrect.";
             break;
 
           case "auth/user-not-found":
-            setEmailError("Invalid"); // Just for styling
+            setEmailError("Invalid");
             toastMessage = "We couldn't find an account with that email.";
             break;
 
@@ -432,7 +366,7 @@ export const LoginForm = () => {
             break;
 
           case "auth/invalid-email":
-            setEmailError("Invalid"); // Just for styling
+            setEmailError("Invalid");
             toastMessage = "Please enter a valid email address.";
             break;
 

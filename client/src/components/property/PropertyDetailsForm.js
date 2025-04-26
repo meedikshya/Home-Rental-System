@@ -9,18 +9,23 @@ import {
   FaBath,
   FaArrowRight,
   FaEdit,
+  FaExclamationCircle,
 } from "react-icons/fa";
 
-// Modified component to handle both create and edit modes
+// Modified component with standard React form handling (no Formik)
 const PropertyDetailsForm = ({
-  initialData = null, // Pass existing data for edit mode
-  propertyId = null, // Pass ID for edit mode
-  setPropertyId, // Only used in create mode
+  initialData = null,
+  propertyId = null,
+  setPropertyId,
   landlordId,
   setCurrentStep,
-  mode = "create", // "create" or "edit"
+  mode = "create",
 }) => {
-  // Initialize with empty values or provided data
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+
+  // Form values state
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -38,22 +43,140 @@ const PropertyDetailsForm = ({
     totalKitchens: "0",
   });
 
-  const [saving, setSaving] = useState(false);
-
-  // If in edit mode, load initial data
+  // Initialize form with initial data if provided
   useEffect(() => {
-    if (mode === "edit" && initialData) {
-      setFormData(initialData);
-    }
-  }, [initialData, mode]);
+    if (initialData) {
+      const preparedData = { ...initialData };
+      const numericFields = [
+        "ward",
+        "price",
+        "totalBedrooms",
+        "totalLivingRooms",
+        "totalWashrooms",
+        "totalKitchens",
+      ];
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prevData) => ({ ...prevData, [name]: value }));
+      numericFields.forEach((field) => {
+        if (preparedData[field] !== undefined) {
+          preparedData[field] = preparedData[field].toString();
+        }
+      });
+
+      setFormData(preparedData);
+    }
+  }, [initialData]);
+
+  // Form fields with validation rules
+  const validationRules = {
+    title: {
+      required: true,
+      minLength: 3,
+      maxLength: 100,
+      errorMessage: (val) => {
+        if (!val) return "Title is required";
+        if (val.length < 3) return "Title must be at least 3 characters";
+        if (val.length > 100) return "Title must be less than 100 characters";
+        return "";
+      },
+    },
+    description: {
+      required: true,
+      minLength: 10,
+      errorMessage: (val) => {
+        if (!val) return "Description is required";
+        if (val.length < 10)
+          return "Description must be at least 10 characters";
+        return "";
+      },
+    },
+    price: {
+      required: true,
+      min: 0,
+      type: "number",
+      errorMessage: (val) => {
+        if (!val) return "Price is required";
+        if (isNaN(parseFloat(val))) return "Price must be a number";
+        if (parseFloat(val) <= 0) return "Price must be positive";
+        return "";
+      },
+    },
+    // Add other validation rules as needed
   };
 
-  const handleSubmitProperty = async (e) => {
+  // Handle input changes
+  const handleChange = (e) => {
+    const { name, value, type } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    // Mark field as touched
+    setTouched((prev) => ({
+      ...prev,
+      [name]: true,
+    }));
+
+    // Validate field
+    validateField(name, value);
+  };
+
+  // Field validation
+  const validateField = (name, value) => {
+    const rule = validationRules[name];
+    if (!rule) return;
+
+    let error = "";
+    if (rule.errorMessage) {
+      error = rule.errorMessage(value);
+    } else {
+      if (rule.required && !value) {
+        error = `${name} is required`;
+      } else if (rule.type === "number") {
+        const numVal = parseFloat(value);
+        if (isNaN(numVal)) {
+          error = `${name} must be a number`;
+        } else if (rule.min !== undefined && numVal < rule.min) {
+          error = `${name} must be at least ${rule.min}`;
+        }
+      }
+    }
+
+    setErrors((prev) => ({
+      ...prev,
+      [name]: error,
+    }));
+
+    return !error;
+  };
+
+  // Validate all fields
+  const validateForm = () => {
+    let isValid = true;
+    let newErrors = {};
+    let newTouched = {};
+
+    Object.keys(validationRules).forEach((name) => {
+      newTouched[name] = true;
+      const valid = validateField(name, formData[name]);
+      if (!valid) isValid = false;
+    });
+
+    setTouched(newTouched);
+    return isValid;
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Validate all fields
+    const isValid = validateForm();
+    if (!isValid) {
+      toast.error("Please fix the errors in the form");
+      return;
+    }
+
     setSaving(true);
 
     if (!landlordId) {
@@ -71,6 +194,7 @@ const PropertyDetailsForm = ({
 
       const token = await FIREBASE_AUTH.currentUser.getIdToken();
 
+      // Parse numeric values
       const propertyData = {
         ...formData,
         landlordId,
@@ -81,6 +205,26 @@ const PropertyDetailsForm = ({
         totalWashrooms: parseInt(formData.totalWashrooms) || 0,
         totalKitchens: parseInt(formData.totalKitchens) || 0,
       };
+
+      // Check for negative values
+      const numericFields = [
+        "ward",
+        "price",
+        "totalBedrooms",
+        "totalLivingRooms",
+        "totalWashrooms",
+        "totalKitchens",
+      ];
+
+      const hasNegativeValues = numericFields.some(
+        (field) => propertyData[field] < 0
+      );
+
+      if (hasNegativeValues) {
+        toast.error("Negative values are not allowed.");
+        setSaving(false);
+        return;
+      }
 
       if (mode === "create") {
         // Create new property
@@ -96,7 +240,7 @@ const PropertyDetailsForm = ({
           toast.error("Failed to get property ID from response.");
         }
       } else {
-        // Update existing property
+        // Update property
         const response = await ApiHandler.put(
           `/Properties/${propertyId}`,
           { ...propertyData, propertyId: parseInt(propertyId) },
@@ -112,18 +256,27 @@ const PropertyDetailsForm = ({
         setCurrentStep(2);
       }
     } catch (error) {
-      toast.error(
-        mode === "create"
-          ? "Failed to add property."
-          : "Failed to update property."
-      );
       console.error("Error:", error);
+
+      if (error.response?.data) {
+        const errorMessage =
+          typeof error.response.data === "string"
+            ? error.response.data
+            : "Server validation failed. Please check your inputs.";
+        toast.error(errorMessage);
+      } else {
+        toast.error(
+          mode === "create"
+            ? "Failed to add property."
+            : "Failed to update property."
+        );
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  // Improved form fields with expanded options
+  // Form sections configuration
   const formFields = [
     {
       section: "Basic Details",
@@ -197,7 +350,7 @@ const PropertyDetailsForm = ({
         )}
       </h2>
 
-      <form onSubmit={handleSubmitProperty} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-8">
         {formFields.map((section) => (
           <div key={section.section} className="space-y-4">
             <h3 className="text-lg font-semibold text-blue-500 flex items-center">
@@ -208,27 +361,39 @@ const PropertyDetailsForm = ({
               {section.fields.map((field) => (
                 <div
                   key={field.name}
-                  className={field.span === 2 ? "md:col-span-2" : ""}
+                  className={`${field.span === 2 ? "md:col-span-2" : ""}`}
                 >
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor={field.name}
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     {field.label}
                   </label>
+
                   {field.type === "textarea" ? (
                     <textarea
+                      id={field.name}
                       name={field.name}
                       value={formData[field.name] || ""}
                       onChange={handleChange}
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full p-2 border ${
+                        errors[field.name] && touched[field.name]
+                          ? "border-red-500 focus:ring-red-500"
+                          : "border-gray-300 focus:ring-blue-500"
+                      } rounded-md focus:ring-2 focus:border-transparent transition-colors`}
                       rows="3"
-                      required
                     />
                   ) : field.type === "select" ? (
                     <select
+                      id={field.name}
                       name={field.name}
                       value={formData[field.name] || ""}
                       onChange={handleChange}
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
+                      className={`w-full p-2 border ${
+                        errors[field.name] && touched[field.name]
+                          ? "border-red-500 focus:ring-red-500"
+                          : "border-gray-300 focus:ring-blue-500"
+                      } rounded-md focus:ring-2 focus:border-transparent transition-colors`}
                     >
                       {field.options.map((option) => (
                         <option key={option} value={option}>
@@ -239,13 +404,24 @@ const PropertyDetailsForm = ({
                   ) : (
                     <input
                       type={field.type}
+                      id={field.name}
                       name={field.name}
                       value={formData[field.name] || ""}
                       onChange={handleChange}
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       min={field.type === "number" ? "0" : undefined}
-                      required
+                      className={`w-full p-2 border ${
+                        errors[field.name] && touched[field.name]
+                          ? "border-red-500 focus:ring-red-500"
+                          : "border-gray-300 focus:ring-blue-500"
+                      } rounded-md focus:ring-2 focus:border-transparent transition-colors`}
                     />
+                  )}
+
+                  {errors[field.name] && touched[field.name] && (
+                    <div className="mt-1 text-sm text-red-600 flex items-center">
+                      <FaExclamationCircle className="mr-1" />
+                      {errors[field.name]}
+                    </div>
                   )}
                 </div>
               ))}

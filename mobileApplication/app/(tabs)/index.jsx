@@ -358,8 +358,11 @@ const Home = () => {
 
           {/* Add some action buttons to balance the header */}
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerIconButton}>
-              <Ionicons name="person-circle-outline" size={26} color="white" />
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={() => router.push("/(pages)/move-in-assistance")}
+            >
+              {/* <Ionicons name="-outline" size={24} color="white" /> */}
             </TouchableOpacity>
           </View>
         </View>
@@ -678,7 +681,6 @@ const styles = StyleSheet.create({
   headerIconButton: {
     padding: 8,
     marginLeft: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 8,
   },
   searchContainer: {

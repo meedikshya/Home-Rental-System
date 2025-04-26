@@ -11,11 +11,10 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import ApiHandler from "../../api/ApiHandler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { sendNotificationToUser } from "../../firebaseNotification.js";
 import PaymentBridge from "../../components/ui/PaymentBridge.js";
 import PaymentSuccess from "../../components/ui/PaymentSuccess.js";
 import PaymentError from "../../components/ui/PaymentError.js";
@@ -30,7 +29,7 @@ const PAYMENT_STATES = {
 const API_BASE_URL =
   Platform.OS === "android"
     ? "http://10.0.2.2:5001/api"
-    : "http://100.64.246.118:5001/api";
+    : "http://192.168.1.70:5001/api";
 
 const PaymentPage = () => {
   const navigation = useNavigation();
@@ -104,7 +103,6 @@ const PaymentPage = () => {
         "and booking id:",
         bookingId
       );
-
       const response = await fetch(
         `${API_BASE_URL}/esewa/initialize-agreement-payment`,
         {
@@ -120,14 +118,11 @@ const PaymentPage = () => {
           }),
         }
       );
-
       if (!response.ok) {
         throw new Error(`Server responded with status: ${response.status}`);
       }
-
       const data = await response.json();
       console.log("Payment initialization response:", data);
-
       if (data.success) {
         setEsewaParams({
           pid: data.paymentParams.pid,
@@ -143,7 +138,6 @@ const PaymentPage = () => {
           address,
           apiBaseUrl: API_BASE_URL,
         });
-
         // Show payment bridge component
         setPaymentState(PAYMENT_STATES.PROCESSING);
       } else {
@@ -213,8 +207,6 @@ const PaymentPage = () => {
       }
 
       console.log("Directly updating booking status for ID:", bookingId);
-
-      // Use the direct endpoint we created
       const response = await fetch(
         `${API_BASE_URL}/esewa/updateBookingStatus`,
         {
@@ -228,7 +220,6 @@ const PaymentPage = () => {
           }),
         }
       );
-
       if (!response.ok) {
         throw new Error(`Server responded with status: ${response.status}`);
       }
@@ -244,19 +235,14 @@ const PaymentPage = () => {
 
   const handlePaymentSuccess = async (paymentResult) => {
     console.log("Payment successful:", paymentResult);
-
-    // Verify payment with backend if we have payment ID
     if (paymentResult && paymentResult.paymentId) {
       const verifiedPayment = await checkPaymentStatus(paymentResult.paymentId);
       if (verifiedPayment) {
         setPaymentData({
           ...paymentResult,
           ...verifiedPayment,
-          // Ensure paymentId is set
           paymentId: verifiedPayment.paymentId || paymentResult.paymentId,
         });
-
-        // Update booking status if needed - though it should already be done in backend
         if (bookingId) {
           // Only as a backup if backend fails
           await updateBookingStatusDirectly(bookingId);
@@ -267,7 +253,6 @@ const PaymentPage = () => {
     } else {
       setPaymentData(paymentResult);
     }
-
     setPaymentState(PAYMENT_STATES.SUCCESS);
   };
 

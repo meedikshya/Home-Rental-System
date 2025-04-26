@@ -7,13 +7,11 @@ import { generateAgreementHtml } from "./generateAgreementHtml.js";
 export const downloadAgreement = async (agreementData, setIsDownloading) => {
   try {
     setIsDownloading(true);
-
     // Extract property address for filename
     const propertyName = agreementData.address
       .split(",")[0]
       .trim()
       .replace(/\s+/g, "_");
-
     // Clean up names for filename
     const landlordName = agreementData.landlordName
       .replace(/\s+/g, "_")
@@ -21,31 +19,24 @@ export const downloadAgreement = async (agreementData, setIsDownloading) => {
     const renterName = agreementData.renterName
       .replace(/\s+/g, "_")
       .replace(/[^a-zA-Z0-9_]/g, "");
-
     // Generate file name
     const fileName = `Lease_${renterName}_${landlordName}_${propertyName}.pdf`;
     const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-
     // Generate HTML content
     const htmlContent = generateAgreementHtml(agreementData);
-
     // Create a PDF file
     const { uri } = await Print.printToFileAsync({
       html: htmlContent,
       base64: false,
     });
-
     // Move the file to a permanent location
     await FileSystem.moveAsync({
       from: uri,
       to: fileUri,
     });
-
     // Confirm file is saved before notifying the user
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
-
     if (fileInfo.exists) {
-      // Check if sharing is available and share the file
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
         await Sharing.shareAsync(fileUri, {

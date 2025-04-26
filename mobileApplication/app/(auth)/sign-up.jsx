@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -12,52 +12,107 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { FIREBASE_AUTH, FIREBASE_DB } from "../../firebaseConfig"; // Firebase config import
-import { doc, setDoc } from "firebase/firestore"; // Import Firestore functions
+import { FIREBASE_AUTH, FIREBASE_DB } from "../../firebaseConfig";
+import { doc, setDoc } from "firebase/firestore";
 import ApiHandler from "../../api/ApiHandler";
+import { hashPassword } from "../../utils/passwordUtils.js";
 
 const SignUp = () => {
   const [isSubmitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const router = useRouter();
 
+  // Password validation state
+  const [passwordValidation, setPasswordValidation] = useState({
+    hasMinLength: false,
+    hasUpperCase: false,
+    hasLowerCase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+  });
+
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  useEffect(() => {
+    if (!form.password) {
+      setPasswordValidation({
+        hasMinLength: false,
+        hasUpperCase: false,
+        hasLowerCase: false,
+        hasNumber: false,
+        hasSpecialChar: false,
+      });
+      setPasswordStrength(0);
+      return;
+    }
+
+    const validation = {
+      hasMinLength: form.password.length >= 8,
+      hasUpperCase: /[A-Z]/.test(form.password),
+      hasLowerCase: /[a-z]/.test(form.password),
+      hasNumber: /[0-9]/.test(form.password),
+      hasSpecialChar: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(form.password),
+    };
+
+    setPasswordValidation(validation);
+    const strength = Object.values(validation).filter(Boolean).length;
+    setPasswordStrength(strength);
+  }, [form.password]);
+
   const submit = async () => {
+    setEmailError("");
+    setPasswordError("");
+
     if (!form.email.trim() || !form.password.trim()) {
-      Alert.alert("Error", "Please fill in all fields");
+      if (!form.email.trim()) {
+        setEmailError("Email is required");
+      }
+      if (!form.password.trim()) {
+        setPasswordError("Password is required");
+      }
       return;
     }
 
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(form.email)) {
-      Alert.alert("Error", "Please enter a valid email");
+      setEmailError("Please enter a valid email address");
+      return;
+    }
+
+    if (passwordStrength < 3) {
+      setPasswordError(
+        "Your password must contain at least 8 characters, uppercase, lowercase, numbers, and special characters"
+      );
       return;
     }
 
     setSubmitting(true);
 
     try {
-      // Firebase authentication
+      const finalHashedPassword = await hashPassword(form.password);
+
       const userCredential = await createUserWithEmailAndPassword(
         FIREBASE_AUTH,
         form.email,
         form.password
       );
 
-      const firebaseUserId = userCredential.user.uid; // Get the Firebase user ID
+      const firebaseUserId = userCredential.user.uid;
 
-      // Save user information in Firestore
       await setDoc(doc(FIREBASE_DB, "users", firebaseUserId), {
         email: form.email,
-        userRole: "Renter", // Default role, you can make this dynamic
+        userRole: "Renter",
         firebaseUId: firebaseUserId,
+        createdAt: new Date(),
       });
 
-      // Send additional user data to your backend API
       const response = await ApiHandler.post("/Users", {
         email: form.email,
-        passwordHash: form.password, // Optional: Consider hashing the password before sending
-        userRole: "Renter", // Default role
-        firebaseUId: firebaseUserId, // Store Firebase UID in your database
+        passwordHash: finalHashedPassword,
+        userRole: "Renter",
+        firebaseUId: firebaseUserId,
       });
 
       if (response && response.userId) {
@@ -71,7 +126,22 @@ const SignUp = () => {
       }
     } catch (error) {
       console.error("Error:", error);
-      const errorMessage = error.message || "An error occurred";
+
+      let errorMessage = "An error occurred during registration";
+
+      if (error.code === "auth/email-already-in-use") {
+        setEmailError("Email already in use");
+        errorMessage = "This email is already registered";
+      } else if (error.code === "auth/weak-password") {
+        setPasswordError("Weak password");
+        errorMessage = "Please choose a stronger password";
+      } else if (error.code === "auth/invalid-email") {
+        setEmailError("Invalid email");
+        errorMessage = "Please enter a valid email address";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       Alert.alert("Error", errorMessage);
     } finally {
       setSubmitting(false);
@@ -91,45 +161,67 @@ const SignUp = () => {
 
           <View className="w-full mt-7">
             <Text className="text-[#20319D] text-lg mb-2">Email</Text>
-            <View className="bg-[#f0f0f0] p-4 rounded-lg">
+            <View
+              className={`bg-[#f0f0f0] p-4 rounded-lg ${
+                emailError ? "border border-red-500" : ""
+              }`}
+            >
               <TextInput
                 value={form.email}
-                onChangeText={(e) => setForm({ ...form, email: e })}
+                onChangeText={(e) => {
+                  setForm({ ...form, email: e });
+                  setEmailError("");
+                }}
                 keyboardType="email-address"
                 className="text-black"
                 placeholder="Enter your email"
                 placeholderTextColor="#888"
               />
             </View>
+            {emailError ? (
+              <Text className="text-red-500 mt-1 text-xs">{emailError}</Text>
+            ) : null}
           </View>
 
-          <View className="w-full mt-7">
+          <View className="w-full mt-5">
             <Text className="text-[#20319D] text-lg mb-2">Password</Text>
-            <View className="bg-[#f0f0f0] p-4 rounded-lg">
+            <View
+              className={`bg-[#f0f0f0] p-4 rounded-lg ${
+                passwordError ? "border border-red-500" : ""
+              }`}
+            >
               <TextInput
                 value={form.password}
-                onChangeText={(e) => setForm({ ...form, password: e })}
+                onChangeText={(e) => {
+                  setForm({ ...form, password: e });
+                  setPasswordError("");
+                }}
                 secureTextEntry
                 className="text-black"
                 placeholder="Enter your password"
                 placeholderTextColor="#888"
               />
             </View>
+            {passwordError ? (
+              <Text className="text-red-500 mt-1 text-xs">{passwordError}</Text>
+            ) : null}
           </View>
 
           <TouchableOpacity
             onPress={submit}
-            className="bg-[#20319D] p-3 rounded-lg flex-row items-center mt-7"
+            className="bg-[#20319D] p-3 rounded-lg flex-row items-center justify-center w-full mt-7"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text className="text-white text-lg text-center mr-2">
-                Sign Up
-              </Text>
+              <>
+                <Text className="text-white text-lg text-center mr-2">
+                  Sign Up
+                </Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </>
             )}
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
 
           <View className="flex justify-center pt-5 flex-row gap-2">

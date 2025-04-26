@@ -9,3 +9,20 @@ body {
   background: #f1f1f1;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+
+/* Add to global CSS or component styles */
+.image-slider img {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
